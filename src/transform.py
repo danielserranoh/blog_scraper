@@ -1,9 +1,8 @@
-# transform.py
+# src/transform.py
 # This file contains the data transformation logic.
 
 from datetime import datetime
 import json
-import requests
 import os
 import time
 import logging
@@ -13,7 +12,7 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-async def _get_gemini_details(client, content, post_title="Unknown Post"): # Changed to async def
+async def _get_gemini_details(client, content, post_title="Unknown Post"):
     """
     Calls the Gemini API to get a summary and a list of 5 keywords,
     ordered by importance.
@@ -52,7 +51,7 @@ async def _get_gemini_details(client, content, post_title="Unknown Post"): # Cha
 
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={gemini_api_key}"
         
-        for i in range(3): # We still try a few times, but with smarter delays
+        for i in range(3):
             try:
                 logger.info(f"    Calling Gemini API for '{post_title}' (attempt {i+1}/3)")
                 response_gen = await client.post(
@@ -61,7 +60,7 @@ async def _get_gemini_details(client, content, post_title="Unknown Post"): # Cha
                     json=payload,
                     timeout=30.0
                 )
-                response_gen.raise_for_status() # This will raise an exception for 4xx/5xx responses
+                response_gen.raise_for_status()
                 
                 json_match = re.search(r'\{.*\}', response_gen.text, re.DOTALL)
                 
@@ -77,15 +76,13 @@ async def _get_gemini_details(client, content, post_title="Unknown Post"): # Cha
                     logger.error(f"Could not find a valid JSON object in the API response for '{post_title}'.")
                     raise ValueError("Invalid API response format")
 
-            except httpx.HTTPStatusError as e: # Catch HTTP errors specifically
-                if e.response.status_code == 429: # Too Many Requests
-                    retry_after = 60 # Default retry delay in seconds
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    retry_after = 60
                     try:
-                        # Attempt to parse retryDelay from API response details
                         error_details = e.response.json()
                         for detail in error_details.get('error', {}).get('details', []):
                             if detail.get('@type') == 'type.googleapis.com/google.rpc.RetryInfo':
-                                # retryDelay is typically in "Xs" format
                                 delay_str = detail.get('retryDelay', '0s')
                                 retry_after = int(delay_str.rstrip('s'))
                                 break
@@ -96,11 +93,11 @@ async def _get_gemini_details(client, content, post_title="Unknown Post"): # Cha
                     time.sleep(retry_after)
                 else:
                     logger.error(f"HTTP error for '{post_title}', not retrying. Status: {e.response.status_code}. Error: {e}")
-                    break # Don't retry for other HTTP errors
-            except httpx.RequestError as e: # Catch other request errors (e.g., network issues)
+                    break
+            except httpx.RequestError as e:
                 logger.warning(f"API call failed for '{post_title}', retrying in {2**i} seconds... Error: {e}")
                 time.sleep(2**i)
-            except Exception as e: # Catch other unexpected errors
+            except Exception as e:
                 logger.error(f"Failed to process API response for '{post_title}': {e}")
                 logger.error(f"Raw API response content: {response_gen.text if 'response_gen' in locals() else 'No response'}")
                 break

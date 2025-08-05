@@ -53,8 +53,8 @@ logger = logging.getLogger(__name__)
 
 # Import functions from other files in the same directory
 from extract import extract_posts_in_batches
-from transform import transform_posts
-from load import load_posts
+from src.transform import transform_posts
+from src.load import load_posts
 
 # This is where load_dotenv() is called to load environment variables from .env file
 load_dotenv() 

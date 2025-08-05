@@ -1,0 +1,58 @@
+Recent Blog Posts for modern campus (Last 30 Days)
+========================================
+
+Title: How Student Management Systems Are Evolving in Higher Ed
+Publication Date: 2025-07-30
+URL: https://moderncampus.com/blog/how-student-management-systems-are-evolving-in-higher-ed.html
+Summary: N/A
+SEO Keywords (from Meta): N/A
+SEO Keywords (from LLM): N/A
+Content: The student information system market is experiencing explosive growth, with industry
+                              analysts projecting the sector will expand from approximately $15.33 billion in 2024 to over $32 billion by 2029, representing a 15.9% compound annual growth rate. This
+               ...
+----------------------------------------
+
+Title: Why Curriculum Management Matters for Student Success
+Publication Date: 2025-07-30
+URL: https://moderncampus.com/blog/why-curriculum-management-matters-for-student-success.html
+Summary: N/A
+SEO Keywords (from Meta): N/A
+SEO Keywords (from LLM): N/A
+Content: A student walks into an academic advisor's office, confused about which courses to
+                              take next. They've been bouncing between requirements that don't seem to connect,
+                              wondering if they're even on the right path toward graduation. This scenari...
+----------------------------------------
+
+Title: The Rise of Higher Education Text Messaging Platforms
+Publication Date: 2025-07-22
+URL: https://moderncampus.com/blog/the-rise-of-higher-education-text-messaging-platforms.html
+Summary: N/A
+SEO Keywords (from Meta): N/A
+SEO Keywords (from LLM): N/A
+Content: The communication revolution in higher education isn't happening in lecture halls;
+                              it's happening in students' text messages. While institutions have long relied on
+                              traditional channels like email and campus portals, 98% of text messages ar...
+----------------------------------------
+
+Title: What to Look for in Continuing Education Registration Software
+Publication Date: 2025-07-22
+URL: https://moderncampus.com/blog/what-to-look-for-in-continuing-education-registration-software.html
+Summary: N/A
+SEO Keywords (from Meta): N/A
+SEO Keywords (from LLM): N/A
+Content: Choosing the right continuing education registration software can make or break your institution's ability to effectively serve non-traditional
+                              learners. With 68% of employers preferring to hire from non-degree education pathways and the continuing education
+           ...
+----------------------------------------
+
+Title: What Are Academic Operations in Higher Ed?
+Publication Date: 2025-07-22
+URL: https://moderncampus.com/blog/what-are-academic-operations-in-higher-ed.html
+Summary: N/A
+SEO Keywords (from Meta): N/A
+SEO Keywords (from LLM): N/A
+Content: Higher education institutions across North America are navigating unprecedented challenges.
+                              Financial pressures have intensified, with an average of one college per week announcing closure or merger throughout 2024. Yet behind these headline-grabbing
+                   ...
+----------------------------------------
+

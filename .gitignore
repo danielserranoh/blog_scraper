@@ -1,0 +1,14 @@
+# Python environment files
+.venv/
+venv/
+__pycache__/
+
+# Output files from the scraper
+scraped/
+
+# Environment variables file
+.env
+
+# Other project-specific files to ignore
+*.pyc
+*.log

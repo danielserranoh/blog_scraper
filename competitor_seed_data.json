@@ -2,17 +2,43 @@
   "competitors": [
     {
       "name": "terminalfour",
-      "url": "https://www.terminalfour.com/blog/",
+      "urls": [
+        "blog/",
+        "blog/cats/accessibility/",
+        "blog/cats/content-strategy/",
+        "blog/cats/digital-marketing/",
+        "blog/cats/events/",
+        "blog/cats/examples/",
+        "blog/cats/governance/",
+        "blog/cats/higher-education-challenges/",
+        "blog/cats/mobile/",
+        "blog/cats/social-media/",
+        "blog/cats/student-recruitment/",
+        "blog/cats/tips--advice/",
+        "blog/cats/video/",
+        "blog/cats/web-development/"
+      ],
       "base_url": "https://www.terminalfour.com",
       "post_list_selector": "article.masthead__featured-article a, article.article-card a",
       "date_selector": "time[datetime]"
     },
     {
       "name": "modern campus",
-      "url": "https://moderncampus.com/blog/index.html",
+      "urls": [
+        "blog/index.html"
+      ],
       "base_url": "https://moderncampus.com",
       "post_list_selector": ".filter-grid .col .card-body h5 a",
       "date_selector": "p:contains('Last updated:')"
+    },
+    {
+      "name": "squiz",
+      "urls": [
+        "blog/"
+      ],
+      "base_url": "https://www.squiz.net",
+      "post_list_selector": "a.cards-list__card",
+      "date_selector": "span.blog-banner__contents-author__date"
     }
   ]
 }

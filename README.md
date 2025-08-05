@@ -38,7 +38,30 @@ You will also need a Gemini API key. You can get one for free at the Google AI S
 
 ### How to Run the Scraper
 
-To start the ETL process, simply run the main Python script from your terminal:
+The scraper can now be run with command-line arguments to specify the scraping duration.
+
+Default (last 30 days):
+````
+
+python main.py
+
+````
+
+Specify a number of days (example 7 days):
+````
+
+python main.py 7
+
+````
+
+Scrape all posts (no date filter):
+````
+
+python main.py -all
+
+````
+
+The script will print its progress to the console. When it's finished, the generated files will be saved in the scraped directory.
 
 ````
 
@@ -100,8 +123,11 @@ To add a new competitor, simply open the `competitor_seed_data.json` file and ad
   "competitors": [
     {
       "name": "new_competitor",
-      "url": "[https://newcompetitor.com/blog](https://newcompetitor.com/blog)",
-      "base_url": "[https://newcompetitor.com](https://newcompetitor.com)",
+      "urls": [
+        "blog/posts/",
+        "blog/cats/new-category/"
+      ],
+      "base_url": "https://newcompetitor.com",
       "post_list_selector": "div.blog-post-card a.post-link",
       "date_selector": "span.publish-date"
     }

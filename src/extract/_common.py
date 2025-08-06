@@ -1,123 +1,208 @@
-# src/extract/_common.py
-# This file contains common helper functions for the extraction phase.
+# main.py
+# This file serves as the main orchestrator for the ETL pipeline.
 
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-import re
-import json
-import time
+from dotenv import load_dotenv
 import os
-import csv
+import json
+import argparse
 import logging
-import httpx
+from termcolor import colored
 import asyncio
+import httpx
+
+# Configure a custom logger with colorized output
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        'INFO': 'blue',
+        'SUCCESS': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red'
+    }
+    def format(self, record):
+        log_message = super().format(record)
+        return colored(log_message, self.COLORS.get(record.levelname))
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(ColorFormatter('%(levelname)s: %(message)s'))
+
+if root_logger.hasHandlers():
+    root_logger.handlers.clear()
+root_logger.addHandler(console_handler)
+
+def success(self, message, *args, **kwargs):
+    if self.isEnabledFor(25):
+        self._log(25, message, args, **kwargs)
+logging.Logger.success = success
 
 logger = logging.getLogger(__name__)
 
-def is_recent(post_date, days=30):
-    """
-    Checks if a post's publication date is within the last `days` from today.
-    """
-    now = datetime.now()
-    thirty_days_ago = now - timedelta(days=days)
-    return post_date >= thirty_days_ago
+load_dotenv() 
 
-def _get_existing_urls(competitor_name):
-    """
-    Reads the existing CSV file to get a list of all scraped post URLs.
-    This prevents re-scraping the same articles.
-    """
-    existing_urls = set()
-    output_folder = os.path.join('scraped', competitor_name)
+from src.extract import extract_posts_in_batches
+from src.transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results
+from src.load import load_posts
 
-    latest_file = None
-    if os.path.isdir(output_folder):
-        files = os.listdir(output_folder)
-        csv_files = [f for f in files if f.endswith('.csv') and f.startswith(competitor_name)]
-        if csv_files:
-            csv_files.sort(reverse=True)
-            latest_file = os.path.join(output_folder, csv_files[0])
+async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all):
+    """
+    Scrapes the blog, saves the raw data, and submits a new batch job.
+    """
+    name = competitor['name']
     
-    if latest_file and os.path.exists(latest_file):
-        with open(latest_file, mode='r', newline='', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                existing_urls.add(row['url'])
-        logger.info(f"Found {len(existing_urls)} existing URLs in {latest_file}.")
+    # 1. EXTRACT: Scrape the blog and collect all posts
+    all_posts = []
+    async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
+        all_posts.extend(batch)
+    
+    if not all_posts:
+        logger.info(f"No new posts found for {name}. No API job will be submitted.")
+        return
+
+    # Save raw posts to a temporary file for state management
+    raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
+    os.makedirs(os.path.dirname(raw_posts_file_path), exist_ok=True)
+    with open(raw_posts_file_path, "w") as f:
+        for post in all_posts:
+            f.write(json.dumps(post) + "\n")
+    logger.info(f"Saved {len(all_posts)} raw posts to '{raw_posts_file_path}'")
+
+    # 2. TRANSFORM: Create and submit the Gemini batch job
+    job_id = await create_gemini_batch_job(all_posts, name)
+
+    if job_id:
+        # Save job ID to a file for later retrieval
+        job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
+        with open(job_id_file_path, "w") as f:
+            f.write(job_id)
+        logger.info(f"Submitted Gemini batch job: {job_id}. Job ID saved to '{job_id_file_path}'")
+        logger.info("The job will be processed in the background. You can check its status later with the --check-job flag.")
     else:
-        logger.info("No previous CSV file found. Scraping all posts.")
+        logger.error(f"Failed to submit Gemini batch job for {name}. No results will be processed.")
+        # Clean up temp file on failure
+        os.remove(raw_posts_file_path)
 
-    return existing_urls
-
-
-async def _get_post_details(client, base_url, post_url_path): 
+async def check_and_load_results(competitor):
     """
-    Scrapes an individual blog post page to find the title, URL, publication date,
-    content, summary, and SEO keywords.
+    Checks for a saved job ID, polls the Gemini API for results, and loads them.
     """
-    cleaned_post_url_path = post_url_path.rstrip(':') 
-    full_url = cleaned_post_url_path if cleaned_post_url_path.startswith('http://') or cleaned_post_url_path.startswith('https://') else f"{base_url.rstrip('/')}/{cleaned_post_url_path.lstrip('/')}"
-    logger.info(f"  Scraping details from: {full_url}")
+    name = competitor['name']
+    job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
+    raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
+
+    if not os.path.exists(job_id_file_path):
+        logger.warning(f"No saved Gemini batch job ID found for {name}. Nothing to check.")
+        return
+
+    with open(job_id_file_path, "r") as f:
+        job_id = f.read().strip()
     
-    try:
-        response = await client.get(full_url, follow_redirects=True) 
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+    logger.info(f"Checking status of Gemini batch job: {job_id}")
 
-        # --- Extract Publication Date ---
-        pub_date = None
-        date_element_time = soup.find('time')
-        if date_element_time and 'datetime' in date_element_time.attrs:
-            pub_date_str = date_element_time['datetime']
-            date_formats_to_try = ['%Y-%m-%d %H:%M', '%Y-%m-%d']
-            for fmt in date_formats_to_try:
-                try:
-                    pub_date = datetime.strptime(pub_date_str, fmt)
-                    break
-                except ValueError:
-                    continue
+    # Poll the API until the job is complete or it fails
+    status = await check_gemini_batch_job(job_id)
+    while status in ["PENDING", "RUNNING"]:
+        logger.info(f"Job is {status}. Waiting 60 seconds before checking again.")
+        await asyncio.sleep(60)
+        status = await check_gemini_batch_job(job_id)
+    
+    if status == "SUCCEEDED":
+        logger.success(f"Gemini batch job '{job_id}' succeeded!")
+        
+        # Load the original raw posts
+        if not os.path.exists(raw_posts_file_path):
+            logger.error(f"Original raw posts file not found: '{raw_posts_file_path}'. Cannot combine results.")
+            return
+
+        with open(raw_posts_file_path, "r") as f:
+            original_posts = [json.loads(line) for line in f]
+        
+        # Download and process results
+        transformed_posts = await download_gemini_batch_results(job_id, original_posts)
+
+        if transformed_posts:
+            load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")
         else:
-            date_element_p = soup.find('p', string=lambda text: text and "Last updated:" in text)
-            if date_element_p:
-                date_text = date_element_p.text.replace('Last updated:', '').strip()
-                try:
-                    pub_date = datetime.strptime(date_text, '%B %d, %Y')
-                except ValueError:
-                    pub_date = None
-            elif soup.find('span', class_='blog-banner__contents-author__date'): 
-                date_element_squiz = soup.find('span', class_='blog-banner__contents-author__date')
-                pub_date_str = date_element_squiz.text.strip()
-                try:
-                    pub_date = datetime.strptime(pub_date_str, '%d %b %Y')
-                except ValueError:
-                    pub_date = None
+            logger.warning(f"No processed posts found for {name}. No files will be created.")
 
-        # --- Extract Title ---
-        title_element = soup.find('h1') or soup.find('h2')
-        title = title_element.text.strip() if title_element else 'No Title Found'
+        # Clean up temporary files
+        os.remove(job_id_file_path)
+        os.remove(raw_posts_file_path)
+        logger.info(f"Cleaned up temporary files for job '{job_id}'")
         
-        # --- Extract Meta Keywords ---
-        keywords_meta = soup.find('meta', {'name': 'keywords'})
-        seo_meta_keywords = keywords_meta['content'] if keywords_meta and 'content' in keywords_meta.attrs else 'N/A'
+    else:
+        logger.error(f"Gemini batch job '{job_id}' failed or has an unknown status: {status}")
 
-        # --- Extract Content ---
-        content_container = soup.find('div', class_=['article-content__main', 'post-content', 'blog-post-body', 'item-content'])
-        content_text = ""
-        if content_container:
-            raw_text = content_container.get_text(separator=' ', strip=True)
-            content_text = re.sub(r'\s+', ' ', raw_text)
-        
-        return {
-            'title': title,
-            'url': full_url,
-            'publication_date': pub_date.strftime('%Y-%m-%d') if pub_date else 'N/A',
-            'content': content_text.strip() if content_text else 'N/A',
-            'summary': 'N/A',
-            'seo_keywords': 'N/A',
-            'seo_meta_keywords': seo_meta_keywords
-        }
 
-    except httpx.RequestError as e: 
-        logger.error(f"Error fetching post details from {full_url}: {e}")
-        return None
+async def main():
+    parser = argparse.ArgumentParser(
+        description="Scrape blog posts from competitor websites. Use --check-job to resume a previously submitted job.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    parser.add_argument(
+        'days',
+        nargs='?',
+        type=int,
+        default=30,
+        help='The number of days to look back for recent posts. Defaults to 30.'
+    )
+    parser.add_argument(
+        '--all',
+        action='store_true',
+        help='Scrape all available posts, regardless of publication date.'
+    )
+    parser.add_argument(
+        '--competitor',
+        '-c',
+        type=str,
+        help='Specify a single competitor to scrape (e.g., "terminalfour", "modern campus", "squiz").'
+    )
+    parser.add_argument(
+        '--check-job',
+        '-j',
+        action='store_true',
+        help='Check for an existing Gemini batch job ID and retrieve its results.'
+    )
+    
+    args = parser.parse_args()
+    
+    if args.check_job and (args.days != 30 or args.all or args.competitor):
+        logger.error("--check-job cannot be used with other scraping arguments (--days, --all, --competitor). Please use it alone.")
+        return
+
+    days_to_scrape = args.days
+    scrape_all = args.all
+    selected_competitor = args.competitor
+
+    try:
+        with open('config/competitor_seed_data.json', 'r') as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        logger.error("Error: 'config/competitor_seed_data.json' not found. Please ensure the file exists.")
+        return
+
+    competitors_to_process = []
+    if selected_competitor:
+        found = False
+        for comp in config['competitors']:
+            if comp['name'].lower() == selected_competitor.lower():
+                competitors_to_process.append(comp)
+                found = True
+                break
+        if not found:
+            logger.error(f"Error: Competitor '{selected_competitor}' not found in 'config/competitor_seed_data.json'.")
+            return
+    else:
+        competitors_to_process = config['competitors']
+
+    for competitor in competitors_to_process:
+        if args.check_job:
+            await check_and_load_results(competitor)
+        else:
+            await run_scrape_and_submit(competitor, days_to_scrape, scrape_all)
+            
+    logger.success("\n--- ETL process completed ---")
+
+if __name__ == "__main__":
+    asyncio.run(main())

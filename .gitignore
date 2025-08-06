@@ -5,6 +5,7 @@ __pycache__/
 
 # Output files from the scraper
 scraped/
+old/
 
 # Environment variables file
 .env

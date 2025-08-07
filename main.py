@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 load_dotenv() 
 
 from src.extract import extract_posts_in_batches
-from src.transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results
+from src.transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results, transform_posts_live
 from src.load import load_posts
 
-async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all):
+async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold):
     """
-    Scrapes the blog, saves the raw data, and submits a new batch job to the Gemini API.
+    Scrapes the blog and decides whether to use live or batch processing.
     """
     name = competitor['name']
     
@@ -59,28 +59,33 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all):
         logger.info(f"No new posts found for {name}. No API job will be submitted.")
         return
 
-    # Save raw posts to a temporary file for state management
-    raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
-    os.makedirs(os.path.dirname(raw_posts_file_path), exist_ok=True)
-    with open(raw_posts_file_path, "w") as f:
-        for post in all_posts:
-            f.write(json.dumps(post) + "\n")
-    logger.info(f"Saved {len(all_posts)} raw posts to '{raw_posts_file_path}'")
-
-    # 2. TRANSFORM: Create and submit the Gemini batch job
-    job_id = await create_gemini_batch_job(all_posts, name)
-
-    if job_id:
-        # Save job ID to a file for later retrieval
-        job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
-        os.makedirs(os.path.dirname(job_id_file_path), exist_ok=True)
-        with open(job_id_file_path, "w") as f:
-            f.write(job_id)
-        logger.info(f"Submitted Gemini batch job: {job_id}. Job ID saved to '{job_id_file_path}'")
-        logger.info("The job will be processed in the background. You can check its status later with the --check-job flag.")
+    # 2. DECISION: Use live or batch processing based on post count
+    if len(all_posts) < batch_threshold and not scrape_all:
+        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold {batch_threshold}. Using live processing.")
+        transformed_posts = await transform_posts_live(all_posts)
+        load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")
     else:
-        logger.error(f"Failed to submit Gemini batch job for {name}. No results will be processed.")
-        os.remove(raw_posts_file_path)
+        logger.info(f"Number of new posts ({len(all_posts)}) is above threshold {batch_threshold}. Submitting a batch job.")
+        # Save raw posts to a temporary file for state management
+        raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
+        os.makedirs(os.path.dirname(raw_posts_file_path), exist_ok=True)
+        with open(raw_posts_file_path, "w") as f:
+            for post in all_posts:
+                f.write(json.dumps(post) + "\n")
+        logger.info(f"Saved {len(all_posts)} raw posts to '{raw_posts_file_path}'")
+        
+        # Create and submit the Gemini batch job
+        job_id = await create_gemini_batch_job(all_posts, name)
+
+        if job_id:
+            job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
+            with open(job_id_file_path, "w") as f:
+                f.write(job_id)
+            logger.info(f"Submitted Gemini batch job: {job_id}. Job ID saved to '{job_id_file_path}'")
+            logger.info("The job will be processed in the background. You can check its status later with the --check-job flag.")
+        else:
+            logger.error(f"Failed to submit Gemini batch job for {name}. No results will be processed.")
+            os.remove(raw_posts_file_path)
 
 async def check_and_load_results(competitor):
     """
@@ -170,6 +175,7 @@ async def main():
     days_to_scrape = args.days
     scrape_all = args.all
     selected_competitor = args.competitor
+    batch_threshold = 10  # A configurable threshold for switching to batch mode
 
     try:
         with open('config/competitor_seed_data.json', 'r') as f:
@@ -196,7 +202,7 @@ async def main():
         if args.check_job:
             await check_and_load_results(competitor)
         else:
-            await run_scrape_and_submit(competitor, days_to_scrape, scrape_all)
+            await run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold)
             
     logger.success("\n--- ETL process completed ---")
 

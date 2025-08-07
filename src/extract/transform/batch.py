@@ -1,5 +1,5 @@
-# src/transform.py
-# This file contains the data transformation logic.
+# src/transform/batch.py
+# This file contains the batch API processing logic.
 
 from datetime import datetime
 import json
@@ -12,17 +12,12 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-# This function is part of the old concurrent processing model and is no longer used in the new workflow.
-# It is replaced by the batch processing functions below.
-async def _get_gemini_details_deprecated(client, content, post_title="Unknown Post"):
-    """
-    Deprecated: Calls the Gemini API for a single post. This has been replaced by Batch Mode.
-    """
-    pass
-
 def _create_jsonl_from_posts(posts):
     """
     Creates a JSONL string from a list of posts for the Gemini Batch API.
+    
+    This function serializes a list of post dictionaries into a
+    JSON Lines format, which is required by the API.
     """
     jsonl_lines = []
     for i, post in enumerate(posts):
@@ -40,13 +35,20 @@ def _create_jsonl_from_posts(posts):
                 "seo_meta_keywords": post.get("seo_meta_keywords")
             }
             # Create a JSON line with a unique key
-            json_line = {"key": f"post-{i}", "request": request_payload, "metadata": metadata}
-            jsonl_lines.append(json.dumps(json_line))
+            try:
+                json_line = {"key": f"post-{i}", "request": request_payload, "metadata": metadata}
+                jsonl_lines.append(json.dumps(json_line))
+            except TypeError as e:
+                logger.error(f"Failed to serialize post {i} to JSON: {e}")
+                logger.error(f"Post data that caused the error: {post}")
     return "\n".join(jsonl_lines)
 
 async def create_gemini_batch_job(posts, competitor_name):
     """
     Submits a list of posts to the Gemini Batch API.
+    
+    This function handles the multi-step process of uploading the file
+    and creating the batch job. It includes retry logic for robustness.
     """
     gemini_api_key = os.getenv("GEMINI_API_KEY")
 
@@ -54,13 +56,11 @@ async def create_gemini_batch_job(posts, competitor_name):
         logger.error("GEMINI_API_KEY not set. Cannot create batch job.")
         return None
 
-    # Prepare the JSONL data for the batch job
     jsonl_data = _create_jsonl_from_posts(posts)
     if not jsonl_data:
         logger.warning("No posts with content to submit to Gemini API. Skipping batch job creation.")
         return None
 
-    # The API documentation recommends preparing a JSON Lines file
     batch_file_path = os.path.join("scraped", competitor_name, "temp_batch_requests.jsonl")
     os.makedirs(os.path.dirname(batch_file_path), exist_ok=True)
     with open(batch_file_path, "w") as f:
@@ -69,39 +69,53 @@ async def create_gemini_batch_job(posts, competitor_name):
     logger.info(f"Generated {len(posts)} Gemini Batch API requests in '{batch_file_path}'.")
 
     async with httpx.AsyncClient() as client:
-        try:
-            # Step 1: Upload the file
-            upload_url = f"https://generativelanguage.googleapis.com/v1beta/files:upload?key={gemini_api_key}"
-            with open(batch_file_path, "rb") as f:
-                upload_response = await client.post(upload_url, data=f.read(), headers={"Content-Type": "application/jsonl"}, timeout=300.0)
-            upload_response.raise_for_status()
-            file_details = upload_response.json()
-            file_id = file_details.get("name")
-            
-            if not file_id:
-                logger.error("Failed to upload batch file. No file ID received.")
-                return None
-            logger.success(f"Successfully uploaded batch file with ID: {file_id}")
-            
-            # Step 2: Create the batch job
-            batch_url = f"https://generativelanguage.googleapis.com/v1beta/batches:create?key={gemini_api_key}"
-            batch_payload = {
-                "input_file": { "uri": f"gs://genai-batch-processing/{file_id}" }, # Note: The API uses a Google Storage URI
-                "model": "models/gemini-2.5-flash-lite-05-20",
-                "output_file": {"uri": f"gs://genai-batch-processing/{competitor_name}-results.jsonl"}
-            }
-            batch_response = await client.post(batch_url, json=batch_payload, timeout=300.0)
-            batch_response.raise_for_status()
-            batch_details = batch_response.json()
-            job_id = batch_details.get("name")
-            
-            os.remove(batch_file_path)
-            
-            return job_id
+        for i in range(3):
+            try:
+                upload_url = f"https://generativelanguage.googleapis.com/v1beta/files?key={gemini_api_key}"
+                
+                with open(batch_file_path, "rb") as f:
+                    upload_response = await client.post(
+                        upload_url,
+                        content=f.read(),
+                        headers={
+                            'x-goog-upload-content-type': 'application/jsonl',
+                            'x-goog-upload-protocol': 'resumable'
+                        },
+                        timeout=300.0
+                    )
+                
+                upload_response.raise_for_status()
+                file_details = upload_response.json()
+                file_id = file_details.get("name")
+                
+                if not file_id:
+                    logger.error(f"Failed to upload batch file: API returned no file ID (attempt {i+1}/3).")
+                    time.sleep(2**i)
+                    continue
 
-        except httpx.RequestError as e:
-            logger.error(f"Error submitting Gemini Batch API job: {e}")
-            return None
+                logger.success(f"Successfully uploaded batch file with ID: {file_id}")
+                
+                batch_url = f"https://generativelanguage.googleapis.com/v1beta/batches:create?key={gemini_api_key}"
+                batch_payload = {
+                    "input_file": { "uri": f"gs://genai-batch-processing/{file_id}" },
+                    "model": "models/gemini-2.5-flash-lite-05-20", # Using the lite version for batch
+                    "output_file": {"uri": f"gs://genai-batch-processing/{competitor_name}-results.jsonl"}
+                }
+                batch_response = await client.post(batch_url, json=batch_payload, timeout=300.0)
+                batch_response.raise_for_status()
+                batch_details = batch_response.json()
+                job_id = batch_details.get("name")
+                
+                os.remove(batch_file_path)
+                
+                return job_id
+
+            except httpx.RequestError as e:
+                logger.error(f"Error submitting Gemini Batch API job: {e} (attempt {i+1}/3)")
+                time.sleep(2**i)
+                
+    logger.error("All retry attempts failed. Cannot create batch job.")
+    return None
 
 async def check_gemini_batch_job(job_id):
     """
@@ -131,7 +145,7 @@ async def download_gemini_batch_results(job_id, original_posts):
     if not gemini_api_key:
         return []
 
-    competitor_name = job_id.split('/')[1].split('-')[0]
+    competitor_name = job_id.split('/')[1]
     output_uri_path = f"gs://genai-batch-processing/{competitor_name}-results.jsonl"
     url = f"https://generativelanguage.googleapis.com/v1beta/files/{output_uri_path}?key={gemini_api_key}"
     
@@ -161,14 +175,12 @@ async def download_gemini_batch_results(job_id, original_posts):
                 key = f"post-{i}"
                 gemini_data = results_map.get(key, {})
                 
-                # Check if the Gemini API returned a valid summary and keywords
                 if gemini_data.get('summary') != 'N/A':
                     post['summary'] = gemini_data.get('summary')
                     post['seo_keywords'] = gemini_data.get('seo_keywords')
                 
                 transformed_posts.append(post)
 
-            # Sort the posts by date in descending order (most recent first)
             posts_with_dates = [p for p in transformed_posts if p['publication_date'] != 'N/A']
             posts_without_dates = [p for p in transformed_posts if p['publication_date'] == 'N/A']
 
@@ -178,10 +190,3 @@ async def download_gemini_batch_results(job_id, original_posts):
         except httpx.RequestError as e:
             logger.error(f"Error downloading results for job {job_id}: {e}")
             return []
-
-
-def transform_posts(posts):
-    """
-    This function is now deprecated in favor of the new batch processing workflow.
-    """
-    pass

@@ -46,6 +46,8 @@ The scraper can now be run with command-line arguments to specify the scraping d
     `python main.py 90 --competitor "squiz"`
   * **Scrape all posts for a specific competitor:**
     `python main.py --all --competitor "terminalfour"`
+  * **Show the help message:**
+    `python main.py --all --competitor "terminalfour"`
 
 The script will print its progress to the console. When it's finished, the generated files will be saved in the `scraped` directory.
 

@@ -194,6 +194,8 @@ async def main():
     except FileNotFoundError:
         logger.error("Error: 'config/competitor_seed_data.json' not found. Please ensure the file exists.")
         return
+    # We use .get() to provide a default value in case the key is missing from the file.
+    batch_threshold = config.get('batch_threshold', 10) 
 
     competitors_to_process = []
     if selected_competitor:

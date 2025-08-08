@@ -9,6 +9,7 @@ import logging
 from termcolor import colored
 import asyncio
 import httpx
+import csv
 
 # Configure a custom logger with colorized output
 class ColorFormatter(logging.Formatter):
@@ -50,7 +51,6 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
     """
     name = competitor['name']
     
-    # 1. EXTRACT: Scrape the blog and collect all posts
     all_posts = []
     async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
         all_posts.extend(batch)
@@ -59,14 +59,12 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
         logger.info(f"No new posts found for {name}. No API job will be submitted.")
         return
 
-    # 2. DECISION: Use live or batch processing based on post count
     if len(all_posts) < batch_threshold and not scrape_all:
-        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold {batch_threshold}. Using live processing.")
+        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
         transformed_posts = await transform_posts_live(all_posts)
         load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")
     else:
-        logger.info(f"Number of new posts ({len(all_posts)}) is above threshold {batch_threshold}. Submitting a batch job.")
-        # Save raw posts to a temporary file for state management
+        logger.info(f"Number of new posts ({len(all_posts)}) is above threshold. Submitting a batch job.")
         raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
         os.makedirs(os.path.dirname(raw_posts_file_path), exist_ok=True)
         with open(raw_posts_file_path, "w") as f:
@@ -74,8 +72,7 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
                 f.write(json.dumps(post) + "\n")
         logger.info(f"Saved {len(all_posts)} raw posts to '{raw_posts_file_path}'")
         
-        # Create and submit the Gemini batch job
-        job_id = await create_gemini_batch_job(all_posts, name)
+        job_id = create_gemini_batch_job(all_posts, name)
 
         if job_id:
             job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
@@ -104,11 +101,11 @@ async def check_and_load_results(competitor):
     
     logger.info(f"Checking status of Gemini batch job: {job_id}")
 
-    status = await check_gemini_batch_job(job_id)
+    status = check_gemini_batch_job(job_id)
     while status in ["PENDING", "RUNNING"]:
         logger.info(f"Job is {status}. Waiting 60 seconds before checking again.")
         await asyncio.sleep(60)
-        status = await check_gemini_batch_job(job_id)
+        status = check_gemini_batch_job(job_id)
     
     if status == "SUCCEEDED":
         logger.success(f"Gemini batch job '{job_id}' succeeded!")
@@ -148,34 +145,48 @@ async def main():
         default=30,
         help='The number of days to look back for recent posts. Defaults to 30.'
     )
-    parser.add_argument(
+    
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         '--all',
         action='store_true',
         help='Scrape all available posts, regardless of publication date.'
     )
-    parser.add_argument(
-        '--competitor',
-        '-c',
-        type=str,
-        help='Specify a single competitor to scrape (e.g., "terminalfour", "modern campus", "squiz").'
-    )
-    parser.add_argument(
+    group.add_argument(
         '--check-job',
         '-j',
         action='store_true',
         help='Check for an existing Gemini batch job ID and retrieve its results.'
     )
+    group.add_argument(
+        '--enrich',
+        '-e',
+        action='store_true',
+        help='Enrich existing posts in the scraped CSV file that are missing Gemini API data.'
+    )
+
+    parser.add_argument(
+        '--competitor',
+        '-c',
+        type=str,
+        help='Specify a single competitor to scrape (e.g., "terminalfour", "modern campus", "squiz").\nIf omitted, all competitors will be scraped.'
+    )
     
     args = parser.parse_args()
     
-    if args.check_job and (args.days != 30 or args.all or args.competitor):
-        logger.error("--check-job cannot be used with other scraping arguments (--days, --all, --competitor). Please use it alone.")
+    if args.check_job and (args.days != 30 or args.competitor or args.enrich):
+        logger.error("--check-job cannot be used with other scraping arguments (--days, --competitor, --enrich). Please use it alone.")
+        return
+    
+    if args.enrich and (args.days != 30):
+        logger.error("--enrich cannot be used with --days or --all. Please specify a competitor with -c.")
         return
 
     days_to_scrape = args.days
     scrape_all = args.all
     selected_competitor = args.competitor
-    batch_threshold = 10  # A configurable threshold for switching to batch mode
+    enrich_posts = args.enrich
+    batch_threshold = 10
 
     try:
         with open('config/competitor_seed_data.json', 'r') as f:
@@ -201,6 +212,58 @@ async def main():
     for competitor in competitors_to_process:
         if args.check_job:
             await check_and_load_results(competitor)
+        elif args.enrich:
+            logger.info(f"--- Starting enrichment process for {competitor['name']} ---")
+            posts_to_enrich = []
+            
+            output_folder = os.path.join("scraped", competitor['name'])
+            if not os.path.isdir(output_folder):
+                logger.warning(f"No scraped data found for {competitor['name']}. Cannot enrich.")
+                continue
+
+            files = os.listdir(output_folder)
+            csv_files = [f for f in files if f.endswith('.csv') and f.startswith(competitor['name'])]
+            if not csv_files:
+                logger.warning(f"No CSV file found for {competitor['name']}. Cannot enrich.")
+                continue
+
+            latest_file = os.path.join(output_folder, max(csv_files))
+            all_posts_from_file = []
+            with open(latest_file, mode='r', newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for post in reader:
+                    all_posts_from_file.append(post)
+                    if post.get('summary') == 'N/A' or post.get('seo_keywords') == 'N/A':
+                        posts_to_enrich.append(post)
+            
+            if posts_to_enrich:
+                if len(posts_to_enrich) < batch_threshold:
+                    logger.info(f"Found {len(posts_to_enrich)} posts to enrich. Using live processing.")
+                    enriched_posts = transform_posts_live(posts_to_enrich)
+                else:
+                    logger.info(f"Found {len(posts_to_enrich)} posts to enrich. Submitting a batch job.")
+                    job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'])
+
+                    if job_id:
+                        logger.success(f"Submitted Gemini batch job: {job_id}. Use --check-job to retrieve results later.")
+                        continue
+                    else:
+                        logger.error(f"Failed to submit Gemini batch job for {competitor['name']}. No results will be processed.")
+                        continue
+                
+                if enriched_posts:
+                    enriched_map = {post['url']: post for post in enriched_posts}
+                    final_posts = []
+                    for post in all_posts_from_file:
+                        final_posts.append(enriched_map.get(post['url'], post))
+                        
+                    load_posts(final_posts, filename_prefix=f"{competitor['name']}_blog_posts")
+                    logger.success(f"Successfully enriched {len(enriched_posts)} posts.")
+                else:
+                    logger.warning(f"Enrichment process failed for {competitor['name']}.")
+            else:
+                logger.info(f"No posts found for {competitor['name']} that need enrichment.")
+                
         else:
             await run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold)
             

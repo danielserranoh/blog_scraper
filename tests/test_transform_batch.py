@@ -8,15 +8,47 @@ import asyncio
 from datetime import datetime
 import httpx
 import respx
+import logging
+from termcolor import colored
+from pathlib import Path
 
-# Import the functions to be tested from their new location
+# Configure the logger for the test file
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        'INFO': 'blue',
+        'SUCCESS': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red'
+    }
+    def format(self, record):
+        log_message = super().format(record)
+        return colored(log_message, self.COLORS.get(record.levelname))
+
+# Setup logging for the test file
+logging.addLevelName(25, 'SUCCESS')
+test_logger = logging.getLogger(__name__)
+test_logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(ColorFormatter('%(levelname)s: %(message)s'))
+if test_logger.hasHandlers():
+    test_logger.handlers.clear()
+test_logger.addHandler(handler)
+
+def success(self, message, *args, **kwargs):
+    if self.isEnabledFor(25):
+        self._log(25, message, args, **kwargs)
+logging.Logger.success = success
+
+# Correct imports from the new folder structure
+# We now import the specific functions from their files
 from src.transform.batch import (
     _create_jsonl_from_posts,
     create_gemini_batch_job,
     check_gemini_batch_job,
     download_gemini_batch_results
 )
-from src.extract._common import _get_post_details # A helper used by the tests
+from src.extract._common import _get_existing_urls # Corrected import for the helper function
+
 
 # Set a mock API key for testing
 os.environ['GEMINI_API_KEY'] = "test_api_key"
@@ -72,11 +104,15 @@ async def test_create_gemini_batch_job_success(mock_posts, tmp_path):
     """
     Tests a successful file upload and batch job creation.
     """
+    # Create the mock directory for the temp file
+    os.makedirs(tmp_path / "scraped" / "test_competitor", exist_ok=True)
+    
     # Define mock responses for the API endpoints
-    respx.post("https://generativelanguage.googleapis.com/v1beta/files").mock(
+    # The URLs are now correctly matched to the actual code
+    respx.post("https://generativelanguage.googleapis.com/v1beta/files?key=test_api_key").mock(
         return_value=httpx.Response(200, json={"name": "files/mock-file-id"})
     )
-    respx.post("https://generativelanguage.googleapis.com/v1beta/batches:create").mock(
+    respx.post("https://generativelanguage.googleapis.com/v1beta/batches:create?key=test_api_key").mock(
         return_value=httpx.Response(200, json={"name": "batches/mock-job-id"})
     )
     
@@ -90,11 +126,13 @@ async def test_create_gemini_batch_job_success(mock_posts, tmp_path):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_create_gemini_batch_job_failed_upload(mock_posts):
+async def test_create_gemini_batch_job_failed_upload(mock_posts, tmp_path):
     """
     Tests a failed file upload (e.g., non-200 status).
     """
-    respx.post("https://generativelanguage.googleapis.com/v1beta/files").mock(
+    # Create the mock directory for the temp file
+    os.makedirs(tmp_path / "scraped" / "test_competitor", exist_ok=True)
+    respx.post("https://generativelanguage.googleapis.com/v1beta/files?key=test_api_key").mock(
         return_value=httpx.Response(500) # Simulate a server error
     )
     
@@ -110,7 +148,7 @@ async def test_check_gemini_batch_job_succeeded():
     Tests a successful check on a Gemini batch job.
     """
     job_id = "batches/mock-job-id"
-    respx.get(f"https://generativelanguage.googleapis.com/v1beta/{job_id}").mock(
+    respx.get(f"https://generativelanguage.googleapis.com/v1beta/{job_id}?key=test_api_key").mock(
         return_value=httpx.Response(200, json={"state": "SUCCEEDED"})
     )
     
@@ -131,7 +169,7 @@ async def test_download_gemini_batch_results_success(mock_posts, mock_gemini_res
         json.dumps({"key": "post-1", "response": {"candidates": [{"content": {"parts": [{"text": json.dumps(mock_gemini_response_data)}]}}]}})
     ]
     
-    respx.get(f"https://generativelanguage.googleapis.com/v1beta/files/gs://genai-batch-processing/test_competitor-results.jsonl").mock(
+    respx.get(f"https://generativelanguage.googleapis.com/v1beta/files/gs://genai-batch-processing/test_competitor-results.jsonl?key=test_api_key").mock(
         return_value=httpx.Response(200, content='\n'.join(mock_jsonl_response))
     )
     
@@ -140,4 +178,3 @@ async def test_download_gemini_batch_results_success(mock_posts, mock_gemini_res
     assert len(transformed_posts) == len(mock_posts)
     assert transformed_posts[0]['summary'] == mock_gemini_response_data['summary']
     assert transformed_posts[0]['seo_keywords'] == ', '.join(mock_gemini_response_data['seo_keywords'])
-

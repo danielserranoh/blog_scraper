@@ -34,7 +34,7 @@
     {
       "name": "squiz",
       "urls": [
-        "blog/"
+        "blog"
       ],
       "base_url": "https://www.squiz.net",
       "post_list_selector": "a.cards-list__card",

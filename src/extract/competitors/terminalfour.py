@@ -46,7 +46,7 @@ async def extract_from_terminalfour(config, days, scrape_all, batch_size):
                             logger.info(f"  Skipping existing post: {full_post_url}")
                             continue
                         
-                        tasks.append(_get_post_details(client, base_url, post_url_path)) 
+                        tasks.append(_get_post_details(client, base_url, post_url_path, config['name'])) 
 
                 post_details_list = await asyncio.gather(*tasks)
 

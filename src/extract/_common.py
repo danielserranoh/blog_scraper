@@ -53,7 +53,7 @@ def _get_existing_urls(competitor_name):
     return existing_urls
 
 
-async def _get_post_details(client, base_url, post_url_path): 
+async def _get_post_details(client, base_url, post_url_path, competitor_name):
     """
     Scrapes an individual blog post page to find the title, URL, publication date,
     content, summary, and SEO keywords.
@@ -107,11 +107,21 @@ async def _get_post_details(client, base_url, post_url_path):
         content_container = soup.find('div', class_=['article-content__main', 'post-content', 'blog-post-body', 'item-content', 'no-wysiwyg'])
         content_text = ""
         if content_container:
+            # Specific logic to remove the table of contents for the 'squiz' competitor
+            if competitor_name == 'squiz':
+                # Find the 'Skip ahead:' header
+                skip_ahead_header = content_container.find('h3', string=lambda text: text and 'Skip ahead:' in text)
+                if skip_ahead_header:
+                    # Find the <ul> that immediately follows the header
+                    toc_list = skip_ahead_header.find_next_sibling('ul')
+                    if toc_list:
+                        toc_list.decompose() # This removes the element from the parse tree
+
             for element in content_container.children:
-                if element.name == 'h3' and 'Skip ahead:' in element.get_text():
-                    continue
-                if element.name == 'ul':
-                    continue
+                # The 'ul' removal logic is now more specific and handled above,
+                # so we can remove the generic 'ul' skip.
+                # if element.name == 'ul':
+                #     continue
                 
                 if hasattr(element, 'get_text'):
                     content_text += element.get_text(separator=' ', strip=True) + " "

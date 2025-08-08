@@ -54,7 +54,7 @@ async def extract_from_squiz(config, days, scrape_all, batch_size):
                         continue
 
                     # Pass the full_post_url directly as post_url, and base_url as empty string
-                    tasks.append(_get_post_details(client, "", full_post_url)) 
+                    tasks.append(_get_post_details(client, "", full_post_url, config['name'])) 
             
             post_details_list = await asyncio.gather(*tasks)
 

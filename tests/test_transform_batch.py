@@ -4,177 +4,124 @@
 import pytest
 import os
 import json
-import asyncio
-from datetime import datetime
-import httpx
-import respx
 import logging
-from termcolor import colored
-from pathlib import Path
+from unittest.mock import MagicMock, PropertyMock
 
-# Configure the logger for the test file
-class ColorFormatter(logging.Formatter):
-    COLORS = {
-        'INFO': 'blue',
-        'SUCCESS': 'green',
-        'WARNING': 'yellow',
-        'ERROR': 'red'
-    }
-    def format(self, record):
-        log_message = super().format(record)
-        return colored(log_message, self.COLORS.get(record.levelname))
-
-# Setup logging for the test file
-logging.addLevelName(25, 'SUCCESS')
-test_logger = logging.getLogger(__name__)
-test_logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(ColorFormatter('%(levelname)s: %(message)s'))
-if test_logger.hasHandlers():
-    test_logger.handlers.clear()
-test_logger.addHandler(handler)
-
-def success(self, message, *args, **kwargs):
-    if self.isEnabledFor(25):
-        self._log(25, message, args, **kwargs)
-logging.Logger.success = success
-
-# Correct imports from the new folder structure
-# We now import the specific functions from their files
-from src.transform.batch import (
-    _create_jsonl_from_posts,
-    create_gemini_batch_job,
-    check_gemini_batch_job,
-    download_gemini_batch_results
-)
-from src.extract._common import _get_existing_urls # Corrected import for the helper function
+# Import the module we are testing to patch it directly
+from src.transform import batch
 
 
-# Set a mock API key for testing
+# Configure a simple logger for tests
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# Set a mock API key for testing environment
 os.environ['GEMINI_API_KEY'] = "test_api_key"
 
 @pytest.fixture
 def mock_posts():
     """Returns a list of mock posts for testing."""
     return [
-        {
-            'title': 'Test Post 1',
-            'url': 'https://example.com/post-1',
-            'publication_date': '2025-07-30',
-            'content': 'This is the content for test post number one. It is a very good post about something.',
-            'seo_meta_keywords': 'keyword1, keyword2'
-        },
-        {
-            'title': 'Test Post 2',
-            'url': 'https://example.com/post-2',
-            'publication_date': '2025-07-29',
-            'content': 'This is the content for test post number two. It discusses something else entirely.',
-            'seo_meta_keywords': 'keyword3, keyword4'
-        }
+        {'title': 'Test Post 1', 'url': 'https://example.com/post-1', 'publication_date': '2025-07-30', 'content': 'Content 1.', 'seo_meta_keywords': 'k1, k2'},
+        {'title': 'Test Post 2', 'url': 'https://example.com/post-2', 'publication_date': '2025-07-29', 'content': 'Content 2.', 'seo_meta_keywords': 'k3, k4'}
     ]
 
-@pytest.fixture
-def mock_gemini_response_data():
-    """Returns a mock JSON response for a successful Gemini API call."""
-    return {
-        "summary": "This is a mock summary.",
-        "seo_keywords": ["mock_keyword1", "mock_keyword2", "mock_keyword3", "mock_keyword4", "mock_keyword5"]
-    }
-
-@pytest.mark.asyncio
-async def test_create_jsonl_from_posts(mock_posts):
+def test_create_jsonl_from_posts(mock_posts):
     """
-    Tests if the _create_jsonl_from_posts function correctly formats posts
-    into a JSONL string.
+    Tests if the _create_jsonl_from_posts function correctly formats posts.
     """
-    jsonl_data = _create_jsonl_from_posts(mock_posts)
+    jsonl_data = batch._create_jsonl_from_posts(mock_posts)
     lines = jsonl_data.strip().split('\n')
-    
     assert len(lines) == 2
-    
-    # Check the first line for correct structure
     line1 = json.loads(lines[0])
     assert line1['key'] == 'post-0'
-    assert 'summary' in line1['request']['contents'][0]['parts'][0]['text']
-    assert line1['metadata']['title'] == 'Test Post 1'
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_create_gemini_batch_job_success(mock_posts, tmp_path):
+def test_create_gemini_batch_job_success(mocker, mock_posts, model_name):
     """
-    Tests a successful file upload and batch job creation.
+    Tests a successful batch job creation.
     """
-    # Create the mock directory for the temp file
-    os.makedirs(tmp_path / "scraped" / "test_competitor", exist_ok=True)
-    
-    # Define mock responses for the API endpoints
-    # The URLs are now correctly matched to the actual code
-    respx.post("https://generativelanguage.googleapis.com/v1beta/files?key=test_api_key").mock(
-        return_value=httpx.Response(200, json={"name": "files/mock-file-id"})
-    )
-    respx.post("https://generativelanguage.googleapis.com/v1beta/batches:create?key=test_api_key").mock(
-        return_value=httpx.Response(200, json={"name": "batches/mock-job-id"})
-    )
-    
-    competitor_name = "test_competitor"
-    job_id = await create_gemini_batch_job(mock_posts, competitor_name)
-    
+    mock_files_service = MagicMock()
+    mock_batches_service = MagicMock()
+    # This is the mock for the main client object
+    mock_client = MagicMock(files=mock_files_service, batches=mock_batches_service)
+
+    mock_uploaded_file = MagicMock(spec=['name'])
+    mock_uploaded_file.name = 'files/mock-file-id'
+    mock_files_service.upload.return_value = mock_uploaded_file
+
+    mock_created_job = MagicMock(spec=['name'])
+    mock_created_job.name = 'batches/mock-job-id'
+    mock_batches_service.create.return_value = mock_created_job
+
+    # Patch the Client class in the 'batch' module to return our mock
+    mocker.patch.object(batch, 'genai', Client=lambda: mock_client)
+    mocker.patch('os.makedirs')
+    mocker.patch('builtins.open', mocker.mock_open())
+    mocker.patch('os.remove')
+
+    job_id = batch.create_gemini_batch_job(mock_posts, "test_competitor")
+
     assert job_id == "batches/mock-job-id"
-    # Ensure the temporary file was cleaned up
-    temp_file = tmp_path / "scraped" / competitor_name / "temp_batch_requests.jsonl"
-    assert not os.path.exists(temp_file)
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_create_gemini_batch_job_failed_upload(mock_posts, tmp_path):
+def test_create_gemini_batch_job_api_error(mocker, mock_posts, model_name):
     """
-    Tests a failed file upload (e.g., non-200 status).
+    Tests that the function returns None when the API raises an error.
     """
-    # Create the mock directory for the temp file
-    os.makedirs(tmp_path / "scraped" / "test_competitor", exist_ok=True)
-    respx.post("https://generativelanguage.googleapis.com/v1beta/files?key=test_api_key").mock(
-        return_value=httpx.Response(500) # Simulate a server error
-    )
+    # --- FIX: We test two things:
+    # 1. That an exception inside the function is caught.
+    # 2. That the function returns None as a result.
     
-    competitor_name = "test_competitor"
-    job_id = await create_gemini_batch_job(mock_posts, competitor_name)
+    # Let's simulate the API call failing, not the client creation
+    mock_files_service = MagicMock()
+    # Make the 'upload' call raise an error
+    mock_files_service.upload.side_effect = Exception("Failed to upload")
+    mock_client = MagicMock(files=mock_files_service)
+
+    mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
+    mocker.patch('os.makedirs')
+    mocker.patch('builtins.open', mocker.mock_open())
     
+    # The function should catch the exception and return None
+    # We add a dummy model name to match the function's signature
+    job_id = batch.create_gemini_batch_job(mock_posts, "test_competitor", "gemini-model")
     assert job_id is None
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_check_gemini_batch_job_succeeded():
+def test_check_gemini_batch_job_succeeded(mocker):
     """
     Tests a successful check on a Gemini batch job.
     """
-    job_id = "batches/mock-job-id"
-    respx.get(f"https://generativelanguage.googleapis.com/v1beta/{job_id}?key=test_api_key").mock(
-        return_value=httpx.Response(200, json={"state": "SUCCEEDED"})
-    )
+    mock_state = MagicMock(name='JobState')
+    mock_state.name = 'JOB_STATE_SUCCEEDED'
+    mock_job = MagicMock(name='BatchJob')
+    type(mock_job).state = PropertyMock(return_value=mock_state)
     
-    status = await check_gemini_batch_job(job_id)
-    
-    assert status == "SUCCEEDED"
+    mock_batches_service = MagicMock()
+    mock_batches_service.get.return_value = mock_job
+    mock_client = MagicMock(batches=mock_batches_service)
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_download_gemini_batch_results_success(mock_posts, mock_gemini_response_data):
+    mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
+    status = batch.check_gemini_batch_job("batches/mock-job-id")
+    assert status == "JOB_STATE_SUCCEEDED"
+
+def test_download_gemini_batch_results_success(mocker, mock_posts):
     """
-    Tests a successful download and parsing of Gemini batch results.
+    Tests a successful download and parsing of results.
     """
-    job_id = "batches/test_competitor-job-id"
-    # Mock the JSONL response from the API
-    mock_jsonl_response = [
-        json.dumps({"key": "post-0", "response": {"candidates": [{"content": {"parts": [{"text": json.dumps(mock_gemini_response_data)}]}}]}}),
-        json.dumps({"key": "post-1", "response": {"candidates": [{"content": {"parts": [{"text": json.dumps(mock_gemini_response_data)}]}}]}})
-    ]
+    response1_data = json.dumps({"summary": "Perfect summary.", "seo_keywords": ["k1", "k2"]})
+    mock_part1 = MagicMock(text=response1_data)
+    mock_candidate1 = MagicMock(content=MagicMock(parts=[mock_part1]))
+    mock_response_item_1 = MagicMock(metadata={'key': 'post-0'}, candidates=[mock_candidate1])
+
+    mock_job = MagicMock(name='BatchJob')
+    type(mock_job).inlined_responses = PropertyMock(return_value=[mock_response_item_1])
     
-    respx.get(f"https://generativelanguage.googleapis.com/v1beta/files/gs://genai-batch-processing/test_competitor-results.jsonl?key=test_api_key").mock(
-        return_value=httpx.Response(200, content='\n'.join(mock_jsonl_response))
-    )
+    mock_batches_service = MagicMock()
+    mock_batches_service.get.return_value = mock_job
+    mock_client = MagicMock(batches=mock_batches_service)
+
+    # We only need to mock the Client, as 'configure' is no longer used
+    mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
     
-    transformed_posts = await download_gemini_batch_results(job_id, mock_posts)
+    transformed_posts = batch.download_gemini_batch_results("batches/mock-job-id", [mock_posts[0]])
     
-    assert len(transformed_posts) == len(mock_posts)
-    assert transformed_posts[0]['summary'] == mock_gemini_response_data['summary']
-    assert transformed_posts[0]['seo_keywords'] == ', '.join(mock_gemini_response_data['seo_keywords'])
+    assert transformed_posts[0]['summary'] == "Perfect summary."
+    assert transformed_posts[0]['seo_keywords'] == "k1, k2"

@@ -44,17 +44,12 @@ def _create_jsonl_from_posts(posts):
                 logger.error(f"Post data that caused the error: {post}")
     return "\n".join(jsonl_lines)
 
-def create_gemini_batch_job(posts, competitor_name):
+def create_gemini_batch_job(posts, competitor_name, model_name):
     """
     Submits a list of posts to the Gemini Batch API using the SDK.
     This function is now synchronous.
     """
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
 
-    if not gemini_api_key:
-        logger.error("GEMINI_API_KEY not set. Cannot create batch job.")
-        return None
-    
     client = genai.Client()
 
     jsonl_data = _create_jsonl_from_posts(posts)
@@ -77,7 +72,7 @@ def create_gemini_batch_job(posts, competitor_name):
                 'mime_type': 'application/jsonl'
             }
         )
-        logger.success(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
+        logger.info(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
         
         logger.info("Creating the batch job.")
         batch_job = client.batches.create(
@@ -89,7 +84,7 @@ def create_gemini_batch_job(posts, competitor_name):
         )
         
         job_id = batch_job.name
-        logger.success(f"Successfully submitted Gemini batch job with ID: {job_id}")
+        logger.info(f"Successfully submitted Gemini batch job with ID: {job_id}")
         
         os.remove(batch_file_path)
         
@@ -130,12 +125,7 @@ def download_gemini_batch_results(job_id, original_posts):
     Downloads the results of a completed Gemini batch job using the SDK
     and combines them with the original posts.
     """
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        logger.error("GEMINI_API_KEY not set. Cannot download batch results.")
-        return []
-
-    genai.configure(api_key=gemini_api_key)
+    
     client = genai.Client()
 
     try:

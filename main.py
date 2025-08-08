@@ -35,7 +35,7 @@ root_logger.addHandler(console_handler)
 def success(self, message, *args, **kwargs):
     if self.isEnabledFor(25):
         self._log(25, message, args, **kwargs)
-logging.Logger.success = success
+#logging.Logger.success = success
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ async def check_and_load_results(competitor):
         status = check_gemini_batch_job(job_id)
     
     if status == "SUCCEEDED":
-        logger.success(f"Gemini batch job '{job_id}' succeeded!")
+        logger.info(f"Gemini batch job '{job_id}' succeeded!")
         
         if not os.path.exists(raw_posts_file_path):
             logger.error(f"Original raw posts file not found: '{raw_posts_file_path}'. Cannot combine results.")
@@ -189,18 +189,36 @@ async def main():
     batch_threshold = 10
 
     try:
+        # Load the main application config
+        with open('config/config.json', 'r') as f:
+            app_config = json.load(f)
+        
+        # Load the competitor data
         with open('config/competitor_seed_data.json', 'r') as f:
-            config = json.load(f)
-    except FileNotFoundError:
-        logger.error("Error: 'config/competitor_seed_data.json' not found. Please ensure the file exists.")
+            competitor_config = json.load(f)
+
+    except FileNotFoundError as e:
+        logger.error(f"Error: Configuration file not found. Please ensure both config.json and competitor_seed_data.json exist in the 'config/' directory. Details: {e}")
         return
-    # We use .get() to provide a default value in case the key is missing from the file.
-    batch_threshold = config.get('batch_threshold', 10) 
+    except json.JSONDecodeError as e:
+        logger.error(f"Error: Could not parse a configuration file. Please check for syntax errors (e.g., trailing commas). Details: {e}")
+        return
+
+    # Get settings from the app_config
+    batch_threshold = app_config.get('batch_threshold', 10)
+    live_model = app_config.get('models', {}).get('live', 'gemini-2.5-flash')
+    batch_model = app_config.get('models', {}).get('batch', 'gemini-2.5-flash-lite')
+
+    # Get competitors from the competitor_config
+    all_competitors = competitor_config.get('competitors', [])
+    if not all_competitors:
+        logger.warning("No competitors found in 'config/competitor_seed_data.json'.")
+        return
 
     competitors_to_process = []
     if selected_competitor:
         found = False
-        for comp in config['competitors']:
+        for comp in all_competitors:
             if comp['name'].lower() == selected_competitor.lower():
                 competitors_to_process.append(comp)
                 found = True
@@ -209,7 +227,7 @@ async def main():
             logger.error(f"Error: Competitor '{selected_competitor}' not found in 'config/competitor_seed_data.json'.")
             return
     else:
-        competitors_to_process = config['competitors']
+        competitors_to_process = all_competitors
 
     for competitor in competitors_to_process:
         if args.check_job:
@@ -247,7 +265,7 @@ async def main():
                     job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'])
 
                     if job_id:
-                        logger.success(f"Submitted Gemini batch job: {job_id}. Use --check-job to retrieve results later.")
+                        logger.info(f"Submitted Gemini batch job: {job_id}. Use --check-job to retrieve results later.")
                         continue
                     else:
                         logger.error(f"Failed to submit Gemini batch job for {competitor['name']}. No results will be processed.")
@@ -260,7 +278,7 @@ async def main():
                         final_posts.append(enriched_map.get(post['url'], post))
                         
                     load_posts(final_posts, filename_prefix=f"{competitor['name']}_blog_posts")
-                    logger.success(f"Successfully enriched {len(enriched_posts)} posts.")
+                    logger.info(f"Successfully enriched {len(enriched_posts)} posts.")
                 else:
                     logger.warning(f"Enrichment process failed for {competitor['name']}.")
             else:
@@ -269,7 +287,7 @@ async def main():
         else:
             await run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold)
             
-    logger.success("\n--- ETL process completed ---")
+    logger.info("\n--- ETL process completed ---")
 
 if __name__ == "__main__":
     asyncio.run(main())

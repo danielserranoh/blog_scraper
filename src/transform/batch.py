@@ -121,85 +121,86 @@ def check_gemini_batch_job(job_id):
         return "ERROR"
 
 
-# In src/transform/batch.py
 
-def download_gemini_batch_results(job_id, original_posts):
+
+def download_gemini_batch_results(job_id, original_posts=None):
     """
-    Downloads the results of a completed Gemini batch job using the SDK
-    and combines them with the original posts.
+    Downloads and processes batch job results. If original_posts is provided,
+    it merges the results. If not, it reconstructs posts from the result metadata.
     """
     client = genai.Client()
     logger.info(f"Downloading results for batch job: {job_id}")
+    transformed_posts = []
 
     try:
         batch_job = client.batches.get(name=job_id)
-
-        # --- NEW LOGIC BASED ON THE OFFICIAL COOKBOOK ---
-        results_map = {}
         
-        # 1. Check if the job actually succeeded and has a destination file.
-        if batch_job.state.name == 'JOB_STATE_SUCCEEDED' and hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'file_name'):
-            result_file_name = batch_job.dest.file_name
-            logger.info(f"Found result file: {result_file_name}. Downloading...")
-            
-            # 2. Download the result file's content.
-            file_content_bytes = client.files.download(file=result_file_name)
-            result_content = file_content_bytes.decode('utf-8')
+        if batch_job.state.name != 'JOB_STATE_SUCCEEDED' or not hasattr(batch_job, 'dest') or not hasattr(batch_job.dest, 'file_name'):
+            logger.error(f"Cannot download results. Job state is {batch_job.state.name}.")
+            return original_posts or []
 
-            # 3. Process each line in the JSONL result file.
-            for line in result_content.splitlines():
-                if not line.strip():
-                    continue
-                
-                result_json = json.loads(line)
-                key = result_json.get('key')
-                response_data = result_json.get('response', {})
-                
-                if 'candidates' in response_data and response_data['candidates']:
-                    text_part = response_data['candidates'][0]['content']['parts'][0]['text']
-                    
-                    parsed_json = None
-                    try:
-                        # Use the robust JSON parsing we developed earlier
-                        parsed_json = json.loads(text_part)
-                    except json.JSONDecodeError:
-                        json_match = re.search(r'\{.*\}', text_part, re.DOTALL)
-                        if json_match:
-                            try:
-                                parsed_json = json.loads(json_match.group(0))
-                            except json.JSONDecodeError:
-                                pass # Failed to parse
+        result_file_name = batch_job.dest.file_name
+        logger.info(f"Found result file: {result_file_name}. Downloading...")
+        file_content_bytes = client.files.download(file=result_file_name)
+        result_content = file_content_bytes.decode('utf-8')
 
-                    if parsed_json:
-                        results_map[key] = {
-                            'summary': parsed_json.get('summary', 'N/A'),
-                            'seo_keywords': ', '.join(parsed_json.get('seo_keywords', []))
-                        }
-                    else:
-                        results_map[key] = {'summary': 'N/A', 'seo_keywords': 'N/A'}
+        # If we have the original posts, create a map for efficient merging
+        if original_posts:
+            original_posts_map = {f"post-{i}": post for i, post in enumerate(original_posts)}
         else:
-            logger.error(f"Could not retrieve results for job {job_id}. State: {batch_job.state.name}. No result file found.")
-            return original_posts
+            logger.warning("Original posts file not found. Reconstructing data from batch results. 'content' field will be missing.")
+            original_posts_map = {}
 
-        # The logic for combining results with original posts remains the same
-        transformed_posts = []
-        for i, post in enumerate(original_posts):
-            key = f"post-{i}"
-            if key in results_map:
-                gemini_data = results_map[key]
-                if gemini_data.get('summary') != 'N/A':
-                    post['summary'] = gemini_data.get('summary')
-                    post['seo_keywords'] = gemini_data.get('seo_keywords')
+        for line in result_content.splitlines():
+            if not line.strip():
+                continue
+            
+            result_json = json.loads(line)
+            key = result_json.get('key')
+            
+            # Start with the original post if it exists, otherwise create a new one
+            post = original_posts_map.get(key, {})
+            if not post: # Reconstruct if missing
+                metadata = result_json.get('request', {}).get('metadata', {})
+                post = {
+                    'title': metadata.get('title', 'N/A'),
+                    'url': metadata.get('url', 'N/A'),
+                    'publication_date': metadata.get('publication_date', 'N/A'),
+                    'content': 'N/A (Reconstructed from batch result)',
+                    'seo_meta_keywords': metadata.get('seo_meta_keywords', 'N/A')
+                }
+
+            # Add the enriched data from the response
+            response_data = result_json.get('response', {})
+            if 'candidates' in response_data and response_data['candidates']:
+                text_part = response_data['candidates'][0]['content']['parts'][0]['text']
+                
+                parsed_json = None
+                try:
+                    parsed_json = json.loads(text_part)
+                except json.JSONDecodeError:
+                    json_match = re.search(r'\{.*\}', text_part, re.DOTALL)
+                    if json_match:
+                        try:
+                            parsed_json = json.loads(json_match.group(0))
+                        except json.JSONDecodeError: pass
+
+                if parsed_json:
+                    post['summary'] = parsed_json.get('summary', 'N/A')
+                    post['seo_keywords'] = ', '.join(parsed_json.get('seo_keywords', []))
+                else:
+                    post['summary'] = 'N/A'
+                    post['seo_keywords'] = 'N/A'
             
             transformed_posts.append(post)
 
+        # Sort the final list of posts by date
         posts_with_dates = [p for p in transformed_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
         posts_without_dates = [p for p in transformed_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
-
         posts_with_dates.sort(key=lambda x: datetime.strptime(x['publication_date'], '%Y-%m-%d'), reverse=True)
         
         return posts_with_dates + posts_without_dates
 
     except Exception as e:
         logger.error(f"An unexpected error occurred while downloading results for job {job_id}: {e}")
-        return original_posts
+        return original_posts or []

@@ -50,12 +50,14 @@ async def extract_from_squiz(config, days, scrape_all, batch_size):
                     full_post_url = post_url_path 
 
                     if full_post_url in existing_urls:
-                        logger.info(f"  Skipping existing post: {full_post_url}")
+                        logger.debug(f"  Skipping existing post: {full_post_url}")
                         continue
 
                     # Pass the full_post_url directly as post_url, and base_url as empty string
                     tasks.append(_get_post_details(client, "", full_post_url, config['name'])) 
-            
+            if tasks:
+                logger.info(f"  Found {len(tasks)} new posts on this page. Fetching details...")
+
             post_details_list = await asyncio.gather(*tasks)
 
             for post_details in post_details_list:

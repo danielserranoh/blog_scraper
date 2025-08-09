@@ -46,11 +46,13 @@ async def extract_from_modern_campus(config, days, scrape_all, batch_size):
                         full_post_url = f"{base_url.rstrip('/')}/{post_url_path.lstrip('/')}"
                         
                         if full_post_url in existing_urls:
-                            logger.info(f"  Skipping existing post: {full_post_url}")
+                            logger.debug(f"  Skipping existing post: {full_post_url}")
                             continue
                         
                         tasks.append(_get_post_details(client, base_url, post_url_path, config['name']))
                         found_new_posts_on_page = True # A new post was found on this page
+                    if tasks:
+                        logger.info(f"  Found {len(tasks)} new posts on this page. Fetching details...")    
                     
                     # Only gather tasks if there are any new posts to process
                     if tasks:

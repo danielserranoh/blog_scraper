@@ -60,7 +60,7 @@ async def _get_post_details(client, base_url, post_url_path, competitor_name):
     """
     cleaned_post_url_path = post_url_path.rstrip(':') 
     full_url = cleaned_post_url_path if cleaned_post_url_path.startswith('http://') or cleaned_post_url_path.startswith('https://') else f"{base_url.rstrip('/')}/{cleaned_post_url_path.lstrip('/')}"
-    logger.info(f"  Scraping details from: {full_url}")
+    logger.debug(f"  Scraping details from: {full_url}")
     
     try:
         response = await client.get(full_url, follow_redirects=True) 

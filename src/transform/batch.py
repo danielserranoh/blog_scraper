@@ -107,7 +107,7 @@ def check_gemini_batch_job(job_id):
     logger.info(f"Checking status of Gemini batch job: {job_id}")
     
     try:
-        batch_job = client.batches.get(job_id)
+        batch_job = client.batches.get(name=job_id)
         job_state = batch_job.state.name
         
         if job_state in completed_states:
@@ -129,7 +129,7 @@ def download_gemini_batch_results(job_id, original_posts):
     client = genai.Client()
 
     try:
-        batch_job = client.batches.get(job_id)
+        batch_job = client.batches.get(name=job_id)
         
         # This assumes results are inlined. For very large jobs, you might need
         # to handle downloading from a result file URI.

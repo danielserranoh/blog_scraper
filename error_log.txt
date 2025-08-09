@@ -6,26 +6,6 @@ plugins: respx-0.22.0, asyncio-1.1.0, anyio-4.10.0, mock-3.14.1
 asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
 collected 5 items
 
-tests/test_transform_batch.py .EE..                                      [100%]
+tests/test_transform_batch.py .....                                      [100%]
 
-==================================== ERRORS ====================================
-____________ ERROR at setup of test_create_gemini_batch_job_success ____________
-file /Users/danielserrano/Tools/blog_scraper/tests/test_transform_batch.py, line 38
-  def test_create_gemini_batch_job_success(mocker, mock_posts, model_name):
-E       fixture 'model_name' not found
->       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, class_mocker, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, mock_posts, mocker, module_mocker, monkeypatch, package_mocker, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, respx_mock, session_mocker, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
->       use 'pytest --fixtures [testpath]' for help on them.
-
-/Users/danielserrano/Tools/blog_scraper/tests/test_transform_batch.py:38
-___________ ERROR at setup of test_create_gemini_batch_job_api_error ___________
-file /Users/danielserrano/Tools/blog_scraper/tests/test_transform_batch.py, line 65
-  def test_create_gemini_batch_job_api_error(mocker, mock_posts, model_name):
-E       fixture 'model_name' not found
->       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, class_mocker, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, mock_posts, mocker, module_mocker, monkeypatch, package_mocker, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, respx_mock, session_mocker, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
->       use 'pytest --fixtures [testpath]' for help on them.
-
-/Users/danielserrano/Tools/blog_scraper/tests/test_transform_batch.py:65
-=========================== short test summary info ============================
-ERROR tests/test_transform_batch.py::test_create_gemini_batch_job_success
-ERROR tests/test_transform_batch.py::test_create_gemini_batch_job_api_error
-========================= 3 passed, 2 errors in 0.34s ==========================
+============================== 5 passed in 0.32s ===============================

@@ -35,7 +35,7 @@ root_logger.addHandler(console_handler)
 def success(self, message, *args, **kwargs):
     if self.isEnabledFor(25):
         self._log(25, message, args, **kwargs)
-#logging.Logger.success = success
+#logging.logger.info = success
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,8 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
             logger.error(f"Failed to submit Gemini batch job for {name}. No results will be processed.")
             os.remove(raw_posts_file_path)
 
+# In main.py
+
 async def check_and_load_results(competitor):
     """
     Checks for a saved job ID, polls the Gemini API for results, and loads them.
@@ -101,13 +103,32 @@ async def check_and_load_results(competitor):
     
     logger.info(f"Checking status of Gemini batch job: {job_id}")
 
-    status = check_gemini_batch_job(job_id)
-    while status in ["PENDING", "RUNNING"]:
-        logger.info(f"Job is {status}. Waiting 60 seconds before checking again.")
-        await asyncio.sleep(60)
-        status = check_gemini_batch_job(job_id)
+    # 1. Define parameters for our backoff strategy
+    initial_delay = 30  # Start with a 30-second wait
+    max_delay = 300     # Don't wait more than 5 minutes between checks
+    multiplier = 2      # Double the delay each time
     
-    if status == "SUCCEEDED":
+    delay = initial_delay
+    
+    while True:
+        status = check_gemini_batch_job(job_id)
+
+        # 2. Check for the terminal states (success or failure)
+        if status not in ["JOB_STATE_PENDING", "JOB_STATE_RUNNING"]:
+            break # Exit the loop if the job is done (succeeded, failed, etc.)
+
+        # 3. If still running, wait using our backoff strategy
+        jitter = random.uniform(0, 5) # Add a random wait of 0-5 seconds
+        wait_time = min(delay, max_delay) + jitter
+        
+        logger.info(f"Job is {status}. Waiting for approximately {int(wait_time)} seconds before checking again.")
+        await asyncio.sleep(wait_time)
+        
+        # Increase the delay for the next iteration
+        delay *= multiplier
+    
+    # This check is now correct after our last fix
+    if status == "JOB_STATE_SUCCEEDED":
         logger.info(f"Gemini batch job '{job_id}' succeeded!")
         
         if not os.path.exists(raw_posts_file_path):
@@ -174,7 +195,7 @@ async def main():
     
     args = parser.parse_args()
     
-    if args.check_job and (args.days != 30 or args.competitor or args.enrich):
+    if args.check_job and (args.days != 30 or args.enrich):
         logger.error("--check-job cannot be used with other scraping arguments (--days, --competitor, --enrich). Please use it alone.")
         return
     
@@ -259,10 +280,12 @@ async def main():
             if posts_to_enrich:
                 if len(posts_to_enrich) < batch_threshold:
                     logger.info(f"Found {len(posts_to_enrich)} posts to enrich. Using live processing.")
-                    enriched_posts = transform_posts_live(posts_to_enrich)
+                    # --- FIX: Pass the 'live_model' argument ---
+                    enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
                 else:
                     logger.info(f"Found {len(posts_to_enrich)} posts to enrich. Submitting a batch job.")
-                    job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'])
+                    # --- FIX: Pass the 'batch_model' argument ---
+                    job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'], batch_model)
 
                     if job_id:
                         logger.info(f"Submitted Gemini batch job: {job_id}. Use --check-job to retrieve results later.")

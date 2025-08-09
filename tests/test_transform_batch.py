@@ -35,7 +35,7 @@ def test_create_jsonl_from_posts(mock_posts):
     line1 = json.loads(lines[0])
     assert line1['key'] == 'post-0'
 
-def test_create_gemini_batch_job_success(mocker, mock_posts, model_name):
+def test_create_gemini_batch_job_success(mocker, mock_posts):
     """
     Tests a successful batch job creation.
     """
@@ -58,11 +58,11 @@ def test_create_gemini_batch_job_success(mocker, mock_posts, model_name):
     mocker.patch('builtins.open', mocker.mock_open())
     mocker.patch('os.remove')
 
-    job_id = batch.create_gemini_batch_job(mock_posts, "test_competitor")
+    job_id = batch.create_gemini_batch_job(mock_posts, "test_competitor", "gemini-model")
 
     assert job_id == "batches/mock-job-id"
 
-def test_create_gemini_batch_job_api_error(mocker, mock_posts, model_name):
+def test_create_gemini_batch_job_api_error(mocker, mock_posts):
     """
     Tests that the function returns None when the API raises an error.
     """

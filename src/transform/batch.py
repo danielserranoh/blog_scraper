@@ -120,77 +120,79 @@ def check_gemini_batch_job(job_id):
         logger.error(f"Error checking status for job {job_id}: {e}")
         return "ERROR"
 
+
+# In src/transform/batch.py
+
 def download_gemini_batch_results(job_id, original_posts):
     """
     Downloads the results of a completed Gemini batch job using the SDK
     and combines them with the original posts.
     """
-    
     client = genai.Client()
+    logger.info(f"Downloading results for batch job: {job_id}")
 
     try:
         batch_job = client.batches.get(name=job_id)
-        
-        # This assumes results are inlined. For very large jobs, you might need
-        # to handle downloading from a result file URI.
-        results = batch_job.inlined_responses
-        if not results:
-            logger.warning(f"Job {job_id} did not have inlined responses. Cannot process results.")
-            return original_posts # Return original posts to avoid data loss
 
+        # --- NEW LOGIC BASED ON THE OFFICIAL COOKBOOK ---
         results_map = {}
-        for result_item in results:
-            key = result_item.metadata.get('key')
-            
-            # Ensure there are candidates and content parts
-            if not result_item.candidates or not result_item.candidates[0].content.parts:
-                logger.warning(f"No content found in response for key {key}.")
-                results_map[key] = {'summary': 'N/A', 'seo_keywords': 'N/A'}
-                continue
-
-            text_part = result_item.candidates[0].content.parts[0].text
-            parsed_json = None
-            
-            try:
-                # 1. First, try to load the whole text as JSON (ideal case)
-                parsed_json = json.loads(text_part)
-            except json.JSONDecodeError:
-                # 2. If that fails, look for a JSON object inside markdown code fences
-                logger.warning(f"Could not parse the full response for key {key}. Falling back to regex search.")
-                json_match = re.search(r'```json\s*(\{.*?\})\s*```', text_part, re.DOTALL)
-                if not json_match:
-                    # 3. If that also fails, try a more general search for a JSON object
-                    json_match = re.search(r'(\{.*?\})', text_part, re.DOTALL)
-
-                if json_match:
-                    try:
-                        parsed_json = json.loads(json_match.group(1))
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse extracted JSON for key {key}. Response text: {text_part}")
-                        parsed_json = None
-            
-            if parsed_json:
-                results_map[key] = {
-                    'summary': parsed_json.get('summary', 'N/A'),
-                    'seo_keywords': ', '.join(parsed_json.get('seo_keywords', []))
-                }
-            else:
-                logger.error(f"All parsing methods failed for key {key}. Storing N/A.")
-                results_map[key] = {'summary': 'N/A', 'seo_keywords': 'N/A'}
         
+        # 1. Check if the job actually succeeded and has a destination file.
+        if batch_job.state.name == 'JOB_STATE_SUCCEEDED' and hasattr(batch_job, 'dest') and hasattr(batch_job.dest, 'file_name'):
+            result_file_name = batch_job.dest.file_name
+            logger.info(f"Found result file: {result_file_name}. Downloading...")
+            
+            # 2. Download the result file's content.
+            file_content_bytes = client.files.download(file=result_file_name)
+            result_content = file_content_bytes.decode('utf-8')
+
+            # 3. Process each line in the JSONL result file.
+            for line in result_content.splitlines():
+                if not line.strip():
+                    continue
+                
+                result_json = json.loads(line)
+                key = result_json.get('key')
+                response_data = result_json.get('response', {})
+                
+                if 'candidates' in response_data and response_data['candidates']:
+                    text_part = response_data['candidates'][0]['content']['parts'][0]['text']
+                    
+                    parsed_json = None
+                    try:
+                        # Use the robust JSON parsing we developed earlier
+                        parsed_json = json.loads(text_part)
+                    except json.JSONDecodeError:
+                        json_match = re.search(r'\{.*\}', text_part, re.DOTALL)
+                        if json_match:
+                            try:
+                                parsed_json = json.loads(json_match.group(0))
+                            except json.JSONDecodeError:
+                                pass # Failed to parse
+
+                    if parsed_json:
+                        results_map[key] = {
+                            'summary': parsed_json.get('summary', 'N/A'),
+                            'seo_keywords': ', '.join(parsed_json.get('seo_keywords', []))
+                        }
+                    else:
+                        results_map[key] = {'summary': 'N/A', 'seo_keywords': 'N/A'}
+        else:
+            logger.error(f"Could not retrieve results for job {job_id}. State: {batch_job.state.name}. No result file found.")
+            return original_posts
+
+        # The logic for combining results with original posts remains the same
         transformed_posts = []
         for i, post in enumerate(original_posts):
             key = f"post-{i}"
             if key in results_map:
                 gemini_data = results_map[key]
-                # Only update if the batch job provided a real summary
                 if gemini_data.get('summary') != 'N/A':
                     post['summary'] = gemini_data.get('summary')
                     post['seo_keywords'] = gemini_data.get('seo_keywords')
             
             transformed_posts.append(post)
 
-        # Sort posts by date, handling posts without a valid date
         posts_with_dates = [p for p in transformed_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
         posts_without_dates = [p for p in transformed_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
 
@@ -198,6 +200,6 @@ def download_gemini_batch_results(job_id, original_posts):
         
         return posts_with_dates + posts_without_dates
 
-    except Exception as e: # Catch a broader range of potential SDK or other errors
+    except Exception as e:
         logger.error(f"An unexpected error occurred while downloading results for job {job_id}: {e}")
-        return original_posts # Return original posts to prevent data loss
+        return original_posts

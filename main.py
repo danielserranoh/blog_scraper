@@ -138,7 +138,7 @@ async def check_and_load_results(competitor):
         with open(raw_posts_file_path, "r") as f:
             original_posts = [json.loads(line) for line in f]
         
-        transformed_posts = await download_gemini_batch_results(job_id, original_posts)
+        transformed_posts = download_gemini_batch_results(job_id, original_posts)
 
         if transformed_posts:
             load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")

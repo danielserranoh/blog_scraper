@@ -31,6 +31,8 @@ Other key features include:
     * `config.json`: For application settings like the batch threshold and model names.
     * `competitor_seed_data.json`: A list of the competitor websites and their assigned `scraping_pattern`.
 
+    A `performance_log.json` file will be created automatically in the `config/` directory to store data for the time estimation feature.
+
 ## How to Run the Scraper
 
 The script is run from the command line and offers several flags to control its behavior.
@@ -49,6 +51,11 @@ The script is run from the command line and offers several flags to control its 
     If you previously submitted a batch job and chose not to wait, you can check its status with this command.
     `python main.py --check-job --competitor "modern campus"`
 
+* **Export Data:**
+    Exports the latest scraped data for one or all competitors to a specified format.
+    `python main.py --export txt --competitor "squiz"`
+    `python main.py --export md`
+
 ## Project Workflow Breakdown
 
 The application is architected with a clean separation between the command-line interface, the core orchestrator, and the modular ETL components.
@@ -59,17 +66,18 @@ The application is architected with a clean separation between the command-line 
 
 #### 2. Orchestrator (`src/orchestrator.py`)
 
-* This is the "brains" of the application. It loads configurations, determines which workflow to run (scrape, enrich, or check job), and executes it by delegating to the appropriate modules.
+* This is the "brains" of the application. It loads all necessary configurations and determines which workflow to run (scrape, enrich, check job, or export).
 
 #### 3. Extraction Phase (`src/extract/`)
 
 * The main router in this module reads the `scraping_pattern` for a given competitor from the configuration.
-* It then dynamically calls the correct scraper module (e.g., `multi_category_pagination.py`) to handle the specific HTML structure of that blog. This makes the system highly extensible.
+* It then dynamically calls the correct scraper module from the `src/extract/blog_patterns/` directory to handle the specific HTML structure of that blog.
 
-#### 4. Transformation & Loading (`src/transform/`, `src/load.py`)
+#### 4. Transformation & Loading
 
-* The transformation module enriches the data using the Gemini API, intelligently switching between live and batch modes.
-* The loading module saves the final, enriched data to `.txt` and `.csv` files.
+* **`src/transform/`**: Enriches the data using the Gemini API, intelligently switching between live and batch modes.
+* **`src/load/`**: Uses a flexible **Adapter Pattern** to save the primary data state to a CSV file in the `state/` directory.
+* **`src/exporters.py`**: Contains logic to format the primary data into user-facing outputs like `.txt`, `.md`, and `.json` files, which are saved in the `exports/` directory.
 
 ## Extending the Project
 
@@ -87,11 +95,6 @@ Adding a new competitor is now incredibly simple, especially if they use an exis
 
 That's it! You do not need to touch any Python code.
 
-#### To Add a New Scraping Pattern:
-
-1.  Create a new Python file in `src/extract/competitors/` that contains your custom scraping logic.
-2.  Open `src/extract/__init__.py` and add your new pattern and its corresponding module to the `PATTERN_MAP` dictionary.
-
 ## Project Files
 
 * **`main.py`**: The command-line entrypoint.
@@ -102,9 +105,13 @@ That's it! You do not need to touch any Python code.
     * `performance_log.json`: (auto-generated) Stores data for time estimates.
 * **`src/`**: Contains all core Python source code.
     * **`extract/`**: Module for the asynchronous scraping phase.
-        * `competitors/`: Contains the different scraping pattern modules (e.g., `multi_category_pagination.py`).
+        * `blog_patterns/`: Contains the different scraping pattern modules (e.g., `multi_category_pagination.py`).
     * **`transform/`**: Module for the data enrichment phase.
-    * **`load.py`**: Handles the final output and file saving.
+    * **`load/`**: Contains the Storage Adapter for saving state.
+    * **`exporters.py`**: Contains logic for creating user-facing output files.
 * **`.env`**: Securely stores your `GEMINI_API_KEY`.
 * **`requirements.txt`**: A list of all Python dependencies.
 * **`tests/`**: Contains unit tests for the project.
+* **`state/`**: (auto-generated) Stores the primary data state in CSV files.
+* **`exports/`**: (auto-generated) Stores the final, user-facing output files.
+* **`workspace/`**: (auto-generated) Stores temporary files during batch processing.

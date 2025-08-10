@@ -8,10 +8,12 @@ import asyncio
 import random
 import time
 import csv
+from datetime import datetime
 
 from .extract import extract_posts_in_batches
 from .transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results, transform_posts_live
-from .load import load_posts
+from .load import get_storage_adapter
+from . import exporters
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +21,9 @@ logger = logging.getLogger(__name__)
 def _save_job_id(competitor_name, job_id):
     """Saves a batch job ID to a text file for later retrieval."""
     try:
-        job_id_file_path = os.path.join("scraped", competitor_name, "batch_job_id.txt")
-        os.makedirs(os.path.dirname(job_id_file_path), exist_ok=True)
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
+        job_id_file_path = os.path.join(workspace_folder, "batch_job_id.txt")
         with open(job_id_file_path, "w") as f:
             f.write(job_id)
         logger.info(f"Submitted Gemini batch job: {job_id}. Job ID saved to '{job_id_file_path}'")
@@ -30,8 +33,9 @@ def _save_job_id(competitor_name, job_id):
 def _save_raw_posts(posts, competitor_name):
     """Saves a list of posts to a temporary JSONL file for later processing."""
     try:
-        raw_posts_file_path = os.path.join("scraped", competitor_name, "temp_posts.jsonl")
-        os.makedirs(os.path.dirname(raw_posts_file_path), exist_ok=True)
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
+        raw_posts_file_path = os.path.join(workspace_folder, "temp_posts.jsonl")
         with open(raw_posts_file_path, "w") as f:
             for post in posts:
                 f.write(json.dumps(post) + "\n")
@@ -97,6 +101,23 @@ def _update_performance_log(job_duration_seconds, num_posts):
     except (IOError, TypeError) as e:
         logger.warning(f"Could not update performance log: {e}")
 
+async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
+    """Asks the user if they want to wait for a submitted batch job."""
+    avg_speed = _get_performance_estimate()
+    if avg_speed > 0:
+        estimated_seconds = avg_speed * num_posts
+        estimated_minutes = estimated_seconds / 60
+        logger.info(f"Based on previous jobs, the estimated completion time is ~{estimated_minutes:.1f} minutes.")
+    
+    try:
+        choice = input("? Do you want to start polling for the results now? (y/n): ").lower()
+        if choice == 'y':
+            await check_and_load_results(competitor, app_config, num_posts)
+        else:
+            logger.info("Exiting. You can check the job status later with the --check-job flag.")
+    except (KeyboardInterrupt, EOFError):
+        logger.info("\nExiting.")
+
 # --- Main Workflow Functions ---
 
 async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model):
@@ -112,7 +133,8 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
     if len(all_posts) < batch_threshold and not scrape_all:
         logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
         transformed_posts = await transform_posts_live(all_posts, live_model)
-        load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")
+        storage_adapter = get_storage_adapter(app_config) # app_config needs to be available
+        storage_adapter.save(transformed_posts, name)
     else:
         logger.info(f"Number of new posts ({len(all_posts)}) is above threshold. Submitting a batch job.")
         raw_posts_file_path = _save_raw_posts(all_posts, name)
@@ -121,7 +143,7 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
         job_id = create_gemini_batch_job(all_posts, name, batch_model)
         if job_id:
             _save_job_id(name, job_id)
-            await _prompt_to_wait_for_job(competitor, len(all_posts))
+            await _prompt_to_wait_for_job(competitor, len(all_posts), app_config)
         else:
             logger.error(f"Failed to submit Gemini batch job for {name}.")
             os.remove(raw_posts_file_path)
@@ -129,8 +151,9 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
 async def check_and_load_results(competitor, num_posts=0):
     """Checks for a saved job ID, polls the API, and loads results."""
     name = competitor['name']
-    job_id_file_path = os.path.join("scraped", name, "batch_job_id.txt")
-    raw_posts_file_path = os.path.join("scraped", name, "temp_posts.jsonl")
+    workspace_folder = os.path.join('workspace', name)
+    job_id_file_path = os.path.join(workspace_folder, "batch_job_id.txt")
+    raw_posts_file_path = os.path.join(workspace_folder, "temp_posts.jsonl")
     
     with open(job_id_file_path, "r") as f:
         job_id = f.read().strip()
@@ -163,7 +186,8 @@ async def check_and_load_results(competitor, num_posts=0):
         
         transformed_posts = download_gemini_batch_results(job_id, original_posts)
         if transformed_posts:
-            load_posts(transformed_posts, filename_prefix=f"{name}_blog_posts")
+            storage_adapter = get_storage_adapter(app_config)
+            storage_adapter.save(transformed_posts, name)
         else:
             logger.warning(f"No processed posts could be recovered for {name}.")
 
@@ -183,7 +207,8 @@ async def run_enrichment_process(competitor, batch_threshold, live_model, batch_
         if enriched_posts:
             enriched_map = {post['url']: post for post in enriched_posts}
             final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
-            load_posts(final_posts, filename_prefix=f"{competitor['name']}_blog_posts")
+            storage_adapter = get_storage_adapter(app_config)
+            storage_adapter.save(final_posts, competitor['name'])
             logger.info(f"Successfully enriched {len(enriched_posts)} posts for '{competitor['name']}'.")
         else:
             logger.warning(f"Enrichment process failed for {competitor['name']}.")
@@ -195,27 +220,71 @@ async def run_enrichment_process(competitor, batch_threshold, live_model, batch_
         job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'], batch_model)
         if job_id:
             _save_job_id(competitor['name'], job_id)
-            await _prompt_to_wait_for_job(competitor, len(posts_to_enrich))
+            await _prompt_to_wait_for_job(competitor, len(posts_to_enrich), app_config)
         else:
             logger.error(f"Failed to submit Gemini batch job for {competitor['name']}.")
             os.remove(raw_posts_file_path)
 
-async def _prompt_to_wait_for_job(competitor, num_posts):
-    """Asks the user if they want to wait for a submitted batch job."""
-    avg_speed = _get_performance_estimate()
-    if avg_speed > 0:
-        estimated_seconds = avg_speed * num_posts
-        estimated_minutes = estimated_seconds / 60
-        logger.info(f"Based on previous jobs, the estimated completion time is ~{estimated_minutes:.1f} minutes.")
+
+def run_export_process(competitors_to_export, export_format):
+    """Finds the latest CSV for each competitor and exports the combined data."""
+    logger.info(f"--- Starting export process to {export_format.upper()} ---")
     
+    all_posts_to_export = []
+    
+    # 1. Loop through each competitor to gather data
+    for competitor in competitors_to_export:
+        competitor_name = competitor['name']
+        state_folder = os.path.join("state", competitor_name)
+        if not os.path.isdir(output_folder):
+            logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
+            continue
+
+        csv_files = [f for f in os.listdir(output_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
+        if not csv_files:
+            logger.warning(f"No CSV file found for '{competitor_name}'. Skipping.")
+            continue
+            
+        latest_csv_path = os.path.join(output_folder, max(csv_files))
+        logger.info(f"Reading latest data for '{competitor_name}' from: {os.path.basename(latest_csv_path)}")
+        
+        with open(latest_csv_path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for post in reader:
+                # Add a new field to identify the competitor in the combined data
+                post['competitor'] = competitor_name
+                all_posts_to_export.append(post)
+
+    if not all_posts_to_export:
+        logger.warning("No data found to export.")
+        return
+
+    # 2. Format the combined data
     try:
-        choice = input("? Do you want to start polling for the results now? (y/n): ").lower()
-        if choice == 'y':
-            await check_and_load_results(competitor, num_posts)
+        formatted_data = exporters.export_data(all_posts_to_export, export_format)
+    except ValueError as e:
+        logger.error(e)
+        return
+
+    # 3. Save the new file
+    try:
+        # Create a filename that reflects the content
+        if len(competitors_to_export) > 1:
+            base_filename = f"all_competitors-{datetime.now().strftime('%y%m%d')}"
         else:
-            logger.info("Exiting. You can check the job status later with the --check-job flag.")
-    except (KeyboardInterrupt, EOFError):
-        logger.info("\nExiting.")
+            base_filename = f"{competitors_to_export[0]['name']}-{datetime.now().strftime('%y%m%d')}"
+        
+        # Save to a new 'exports' directory to keep things clean
+        export_dir = "exports"
+        os.makedirs(export_dir, exist_ok=True)
+        output_filepath = os.path.join(export_dir, f"{base_filename}.{export_format}")
+
+        with open(output_filepath, "w", encoding="utf-8") as f:
+            f.write(formatted_data)
+        logger.info(f"Successfully exported {len(all_posts_to_export)} total posts to: {output_filepath}")
+    except IOError as e:
+        logger.error(f"Failed to write export file: {e}")
+
 
 async def run_pipeline(args):
     """The primary orchestration function that executes the ETL workflow."""
@@ -246,8 +315,12 @@ async def run_pipeline(args):
             logger.warning(f"No pending jobs found for: {', '.join(no_jobs_found)}")
         
         for competitor in jobs_to_check:
-            await check_and_load_results(competitor)
-            
+            await check_and_load_results(competitor, app_config)
+    
+    elif args.export:
+        # The export process is synchronous. It now receives the full list.
+        run_export_process(competitors_to_process, args.export)
+
     elif args.enrich:
         logger.info("Discovering posts to enrich...")
         enrichment_plan = []
@@ -289,17 +362,21 @@ async def run_pipeline(args):
                     batch_threshold,
                     live_model,
                     batch_model,
+                    app_config,
                     item['all_posts_from_file'],
                     item['posts_to_enrich']
                 )
     else:
         for competitor in competitors_to_process:
-            await run_scrape_and_submit(competitor, args.days, args.all, batch_threshold, live_model, batch_model)
+            await run_scrape_and_submit(competitor, args.days, args.all, batch_threshold, live_model, batch_model, app_config)
             
     if args.enrich:
         process_name = "Enrichment"
     elif args.check_job:
         process_name = "Job Check"
+    elif args.export:
+        process_name = "Export"
+    
     else:
         process_name = "Scraping"
 

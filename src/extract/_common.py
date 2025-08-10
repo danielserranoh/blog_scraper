@@ -39,24 +39,17 @@ def _get_existing_urls(competitor_name):
     This prevents re-scraping the same articles.
     """
     existing_urls = set()
-    output_folder = os.path.join('scraped', competitor_name)
+    state_filepath = os.path.join('state', competitor_name, f"{competitor_name}_state.csv")
 
-    latest_file = None
-    if os.path.isdir(output_folder):
-        files = os.listdir(output_folder)
-        csv_files = [f for f in files if f.endswith('.csv') and f.startswith(competitor_name)]
-        if csv_files:
-            csv_files.sort(reverse=True)
-            latest_file = os.path.join(output_folder, csv_files[0])
-    
-    if latest_file and os.path.exists(latest_file):
-        with open(latest_file, mode='r', newline='', encoding='utf-8') as csvfile:
+    if os.path.exists(state_filepath):
+        with open(state_filepath, mode='r', newline='', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                existing_urls.add(row['url'])
-        logger.info(f"Found {len(existing_urls)} existing URLs in {latest_file}.")
+                if 'url' in row:
+                    existing_urls.add(row['url'])
+        logger.info(f"Found {len(existing_urls)} existing URLs in state file: {state_filepath}.")
     else:
-        logger.info("No previous CSV file found. Scraping all posts.")
+        logger.info("No previous state file found. Scraping all posts.")
 
     return existing_urls
 

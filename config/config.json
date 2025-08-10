@@ -2,6 +2,9 @@
   "batch_threshold": 10,
   "models": {
     "live": "gemini-2.0-flash",
-    "batch": "gemini-2.0-flash-lite"
+    "batch": "gemini-2.5-flash"
+  },
+  "storage": {
+    "adapter": "csv"
   }
 }

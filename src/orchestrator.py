@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
 def _save_job_id(competitor_name, job_id):
-    """Saves a batch job ID to a text file for later retrieval."""
+    """Saves a batch job ID to a text file in the workspace directory."""
     try:
         workspace_folder = os.path.join('workspace', competitor_name)
         os.makedirs(workspace_folder, exist_ok=True)
@@ -31,7 +31,7 @@ def _save_job_id(competitor_name, job_id):
         logger.error(f"Could not save job ID {job_id} to file: {e}")
 
 def _save_raw_posts(posts, competitor_name):
-    """Saves a list of posts to a temporary JSONL file for later processing."""
+    """Saves a list of posts to a temporary JSONL file in the workspace."""
     try:
         workspace_folder = os.path.join('workspace', competitor_name)
         os.makedirs(workspace_folder, exist_ok=True)
@@ -101,42 +101,22 @@ def _update_performance_log(job_duration_seconds, num_posts):
     except (IOError, TypeError) as e:
         logger.warning(f"Could not update performance log: {e}")
 
-async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
-    """Asks the user if they want to wait for a submitted batch job."""
-    avg_speed = _get_performance_estimate()
-    if avg_speed > 0:
-        estimated_seconds = avg_speed * num_posts
-        estimated_minutes = estimated_seconds / 60
-        logger.info(f"Based on previous jobs, the estimated completion time is ~{estimated_minutes:.1f} minutes.")
-    
-    try:
-        choice = input("? Do you want to start polling for the results now? (y/n): ").lower()
-        if choice == 'y':
-            await check_and_load_results(competitor, app_config, num_posts)
-        else:
-            logger.info("Exiting. You can check the job status later with the --check-job flag.")
-    except (KeyboardInterrupt, EOFError):
-        logger.info("\nExiting.")
-
 # --- Main Workflow Functions ---
 
-async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model):
+async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
     """Scrapes the blog and decides whether to use live or batch processing."""
     name = competitor['name']
     all_posts = []
     async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
         all_posts.extend(batch)
     if not all_posts:
-        logger.info(f"No new posts found for {name}. No API job will be submitted.")
         return
 
     if len(all_posts) < batch_threshold and not scrape_all:
-        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
         transformed_posts = await transform_posts_live(all_posts, live_model)
-        storage_adapter = get_storage_adapter(app_config) # app_config needs to be available
+        storage_adapter = get_storage_adapter(app_config)
         storage_adapter.save(transformed_posts, name)
     else:
-        logger.info(f"Number of new posts ({len(all_posts)}) is above threshold. Submitting a batch job.")
         raw_posts_file_path = _save_raw_posts(all_posts, name)
         if not raw_posts_file_path:
             return
@@ -145,10 +125,9 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
             _save_job_id(name, job_id)
             await _prompt_to_wait_for_job(competitor, len(all_posts), app_config)
         else:
-            logger.error(f"Failed to submit Gemini batch job for {name}.")
             os.remove(raw_posts_file_path)
 
-async def check_and_load_results(competitor, num_posts=0):
+async def check_and_load_results(competitor, app_config, num_posts=0):
     """Checks for a saved job ID, polls the API, and loads results."""
     name = competitor['name']
     workspace_folder = os.path.join('workspace', name)
@@ -198,10 +177,9 @@ async def check_and_load_results(competitor, num_posts=0):
     else:
         logger.error(f"Gemini batch job '{job_id}' failed or has an unknown status: {status}")
 
-async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, all_posts_from_file, posts_to_enrich):
+async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, app_config, all_posts_from_file, posts_to_enrich):
     """Executes the enrichment for a single competitor, assuming discovery is done."""
     if len(posts_to_enrich) < batch_threshold:
-        logger.info(f"Found {len(posts_to_enrich)} posts for '{competitor['name']}'. Using live processing.")
         enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
         
         if enriched_posts:
@@ -213,7 +191,6 @@ async def run_enrichment_process(competitor, batch_threshold, live_model, batch_
         else:
             logger.warning(f"Enrichment process failed for {competitor['name']}.")
     else:
-        logger.info(f"Found {len(posts_to_enrich)} posts for '{competitor['name']}'. Submitting a batch job.")
         raw_posts_file_path = _save_raw_posts(posts_to_enrich, competitor['name'])
         if not raw_posts_file_path:
             return
@@ -225,33 +202,30 @@ async def run_enrichment_process(competitor, batch_threshold, live_model, batch_
             logger.error(f"Failed to submit Gemini batch job for {competitor['name']}.")
             os.remove(raw_posts_file_path)
 
-
 def run_export_process(competitors_to_export, export_format):
     """Finds the latest CSV for each competitor and exports the combined data."""
     logger.info(f"--- Starting export process to {export_format.upper()} ---")
     
     all_posts_to_export = []
     
-    # 1. Loop through each competitor to gather data
     for competitor in competitors_to_export:
         competitor_name = competitor['name']
         state_folder = os.path.join("state", competitor_name)
-        if not os.path.isdir(output_folder):
+        if not os.path.isdir(state_folder):
             logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
             continue
 
-        csv_files = [f for f in os.listdir(output_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
+        csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
         if not csv_files:
             logger.warning(f"No CSV file found for '{competitor_name}'. Skipping.")
             continue
             
-        latest_csv_path = os.path.join(output_folder, max(csv_files))
+        latest_csv_path = os.path.join(state_folder, max(csv_files))
         logger.info(f"Reading latest data for '{competitor_name}' from: {os.path.basename(latest_csv_path)}")
         
         with open(latest_csv_path, mode='r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for post in reader:
-                # Add a new field to identify the competitor in the combined data
                 post['competitor'] = competitor_name
                 all_posts_to_export.append(post)
 
@@ -259,22 +233,18 @@ def run_export_process(competitors_to_export, export_format):
         logger.warning("No data found to export.")
         return
 
-    # 2. Format the combined data
     try:
         formatted_data = exporters.export_data(all_posts_to_export, export_format)
     except ValueError as e:
         logger.error(e)
         return
 
-    # 3. Save the new file
     try:
-        # Create a filename that reflects the content
         if len(competitors_to_export) > 1:
             base_filename = f"all_competitors-{datetime.now().strftime('%y%m%d')}"
         else:
             base_filename = f"{competitors_to_export[0]['name']}-{datetime.now().strftime('%y%m%d')}"
         
-        # Save to a new 'exports' directory to keep things clean
         export_dir = "exports"
         os.makedirs(export_dir, exist_ok=True)
         output_filepath = os.path.join(export_dir, f"{base_filename}.{export_format}")
@@ -285,6 +255,42 @@ def run_export_process(competitors_to_export, export_format):
     except IOError as e:
         logger.error(f"Failed to write export file: {e}")
 
+async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
+    """Asks the user if they want to wait for a submitted batch job."""
+    avg_speed = _get_performance_estimate()
+    if avg_speed > 0:
+        estimated_seconds = avg_speed * num_posts
+        estimated_minutes = estimated_seconds / 60
+        logger.info(f"Based on previous jobs, the estimated completion time is ~{estimated_minutes:.1f} minutes.")
+    
+    try:
+        choice = input("? Do you want to start polling for the results now? (y/n): ").lower()
+        if choice == 'y':
+            await check_and_load_results(competitor, app_config, num_posts)
+        else:
+            logger.info("Exiting. You can check the job status later with the --check-job flag.")
+    except (KeyboardInterrupt, EOFError):
+        logger.info("\nExiting.")
+
+async def _run_job_check_phase(competitors_to_process, app_config):
+    """Discovers, summarizes, and executes checks for any pending batch jobs."""
+    logger.info("--- Checking for any pending batch jobs before proceeding... ---")
+    
+    jobs_to_check, no_jobs_found = [], []
+    for competitor in competitors_to_process:
+        job_id_file_path = os.path.join("workspace", competitor['name'], "batch_job_id.txt")
+        if os.path.exists(job_id_file_path):
+            jobs_to_check.append(competitor)
+        else:
+            no_jobs_found.append(competitor['name'])
+    
+    if jobs_to_check:
+        logger.info(f"Found pending jobs for: {', '.join([c['name'] for c in jobs_to_check])}. Processing them now.")
+    if no_jobs_found:
+        logger.info(f"No pending jobs found for: {', '.join(no_jobs_found)}")
+    
+    for competitor in jobs_to_check:
+        await check_and_load_results(competitor, app_config)
 
 async def run_pipeline(args):
     """The primary orchestration function that executes the ETL workflow."""
@@ -301,39 +307,25 @@ async def run_pipeline(args):
         return
 
     if args.check_job:
-        jobs_to_check, no_jobs_found = [], []
-        for competitor in competitors_to_process:
-            job_id_file_path = os.path.join("scraped", competitor['name'], "batch_job_id.txt")
-            if os.path.exists(job_id_file_path):
-                jobs_to_check.append(competitor)
-            else:
-                no_jobs_found.append(competitor['name'])
-        
-        if jobs_to_check:
-            logger.info(f"Found pending jobs for: {', '.join([c['name'] for c in jobs_to_check])}")
-        if no_jobs_found:
-            logger.warning(f"No pending jobs found for: {', '.join(no_jobs_found)}")
-        
-        for competitor in jobs_to_check:
-            await check_and_load_results(competitor, app_config)
-    
+        await _run_job_check_phase(competitors_to_process, app_config)
+            
     elif args.export:
-        # The export process is synchronous. It now receives the full list.
+        await _run_job_check_phase(competitors_to_process, app_config)
         run_export_process(competitors_to_process, args.export)
 
     elif args.enrich:
         logger.info("Discovering posts to enrich...")
         enrichment_plan = []
         for competitor in competitors_to_process:
-            output_folder = os.path.join("scraped", competitor['name'])
-            if not os.path.isdir(output_folder):
+            state_folder = os.path.join("state", competitor['name'])
+            if not os.path.isdir(state_folder):
                 continue
 
-            csv_files = [f for f in os.listdir(output_folder) if f.endswith('.csv') and f.startswith(competitor['name'])]
+            csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor['name'])]
             if not csv_files:
                 continue
 
-            latest_file = os.path.join(output_folder, max(csv_files))
+            latest_file = os.path.join(state_folder, max(csv_files))
             all_posts, to_enrich = [], []
             with open(latest_file, mode='r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
@@ -350,7 +342,7 @@ async def run_pipeline(args):
                 })
 
         if not enrichment_plan:
-            logger.info("\nNo posts found that require enrichment.\n")
+            logger.info("No posts found that require enrichment.")
         else:
             logger.info("Enrichment Plan:")
             for item in enrichment_plan:
@@ -358,13 +350,8 @@ async def run_pipeline(args):
 
             for item in enrichment_plan:
                 await run_enrichment_process(
-                    item['competitor'],
-                    batch_threshold,
-                    live_model,
-                    batch_model,
-                    app_config,
-                    item['all_posts_from_file'],
-                    item['posts_to_enrich']
+                    item['competitor'], batch_threshold, live_model, batch_model, app_config,
+                    item['all_posts_from_file'], item['posts_to_enrich']
                 )
     else:
         for competitor in competitors_to_process:
@@ -375,8 +362,7 @@ async def run_pipeline(args):
     elif args.check_job:
         process_name = "Job Check"
     elif args.export:
-        process_name = "Export"
-    
+        process_name = f"Export to {args.export.upper()}"
     else:
         process_name = "Scraping"
 

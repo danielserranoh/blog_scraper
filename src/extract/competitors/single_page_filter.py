@@ -12,7 +12,7 @@ from .._common import is_recent, _get_existing_urls, _get_post_details
 
 logger = logging.getLogger(__name__)
 
-async def extract_from_squiz(config, days, scrape_all, batch_size):
+async def scrape(config, days, scrape_all, batch_size):
     """
     Scrapes the Squiz blog by scraping its main blog page (which contains all posts).
     Yields posts in batches.

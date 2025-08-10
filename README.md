@@ -4,11 +4,12 @@
 
 This Python project is an advanced ETL (Extract, Transform, Load) pipeline designed to scrape blog posts from multiple competitor websites. It gathers key information such as the title, URL, publication date, and content, then enriches this data using the Gemini API to generate concise summaries and SEO keywords.
 
-The scraper features a sophisticated, dual-path system for API interaction:
-* **Live Processing**: For small jobs, it uses a high-performance, asynchronous workflow to get results in real-time.
-* **Batch Processing**: For large jobs, it uses the cost-effective Gemini Batch API.
+The architecture is built around a powerful **pattern-based system**, allowing it to be easily extended to scrape new blogs that follow common structural patterns (e.g., multi-page categories, single-page lists).
 
-A key feature of this tool is its intelligent, interactive command-line interface. When a batch job is submitted, the scraper provides a **self-improving time estimate** based on the performance of previous jobs. It then gives the user the choice to wait for the results or check on the job later, creating a seamless and user-friendly experience.
+Other key features include:
+* **Dual API Strategy**: Intelligently switches between a high-performance "live" mode for small jobs and a cost-effective "batch" mode for large jobs.
+* **Self-Improving Time Estimation**: The scraper learns from the performance of previous batch jobs to provide increasingly accurate time estimates.
+* **Interactive CLI**: When a batch job is submitted, the user is given a time estimate and the choice to either wait for the results or check on the job later.
 
 ## Project Setup
 
@@ -28,9 +29,7 @@ A key feature of this tool is its intelligent, interactive command-line interfac
 
 3.  **Configuration Files**: The project uses two main configuration files in the `config/` directory:
     * `config.json`: For application settings like the batch threshold and model names.
-    * `competitor_seed_data.json`: A list of the competitor websites to be scraped.
-
-    A `performance_log.json` file will be created automatically in the `config/` directory to store data for the time estimation feature.
+    * `competitor_seed_data.json`: A list of the competitor websites and their assigned `scraping_pattern`.
 
 ## How to Run the Scraper
 
@@ -50,43 +49,48 @@ The script is run from the command line and offers several flags to control its 
     If you previously submitted a batch job and chose not to wait, you can check its status with this command.
     `python main.py --check-job --competitor "modern campus"`
 
-### Interactive Polling
-
-When you submit a batch job (either through scraping or enrichment), the script will provide an estimated completion time and ask if you want to wait.
-
-````
-
-INFO: Based on previous jobs, the estimated completion time is \~5.2 minutes.
-? Do you want to start polling for the results now? (y/n):
-
-```
-* Answering **`y`** will start an efficient polling process that waits for the job to complete.
-* Answering **`n`** will exit the script, allowing you to run the `--check-job` command later.
-
 ## Project Workflow Breakdown
 
-The application is architected with a clean separation between the command-line interface and the core business logic.
+The application is architected with a clean separation between the command-line interface, the core orchestrator, and the modular ETL components.
 
 #### 1. Entrypoint (`main.py`)
 
-* This script's sole responsibility is to handle the command-line interface.
-* It uses `argparse` to define and parse arguments.
-* It performs initial argument validation.
-* It then calls the main `run_pipeline` function from the orchestrator, passing the parsed arguments.
+* This script's sole responsibility is to handle the command-line interface. It uses `argparse` to define and parse arguments and then calls the main orchestrator.
 
 #### 2. Orchestrator (`src/orchestrator.py`)
 
-* This is the "brains" of the application and contains all the core ETL logic.
-* It loads all necessary configurations.
-* It determines which workflow to run (scrape, enrich, or check job) based on the arguments.
-* It executes the workflow, delegating to the `extract`, `transform`, and `load` modules.
-* It manages the interactive polling and performance logging features.
+* This is the "brains" of the application. It loads configurations, determines which workflow to run (scrape, enrich, or check job), and executes it by delegating to the appropriate modules.
 
-#### 3. ETL Modules (`src/`)
+#### 3. Extraction Phase (`src/extract/`)
 
-* **Extraction (`src/extract/`)**: Uses `asyncio` and `httpx` for high-performance, asynchronous scraping of blog pages.
-* **Transformation (`src/transform/`)**: Intelligently chooses between live processing (`live.py`) and batch processing (`batch.py`) based on the job size.
-* **Loading (`src/load.py`)**: Saves the final, enriched data to `.txt` and `.csv` files.
+* The main router in this module reads the `scraping_pattern` for a given competitor from the configuration.
+* It then dynamically calls the correct scraper module (e.g., `multi_category_pagination.py`) to handle the specific HTML structure of that blog. This makes the system highly extensible.
+
+#### 4. Transformation & Loading (`src/transform/`, `src/load.py`)
+
+* The transformation module enriches the data using the Gemini API, intelligently switching between live and batch modes.
+* The loading module saves the final, enriched data to `.txt` and `.csv` files.
+
+## Extending the Project
+
+Adding a new competitor is now incredibly simple, especially if they use an existing blog structure.
+
+#### To Add a New Competitor (Using an Existing Pattern):
+
+1.  Open `config/competitor_seed_data.json`.
+2.  Add a new JSON object for the new competitor.
+3.  Fill in their `name`, `base_url`, `urls`, and `post_list_selector`.
+4.  For the `scraping_pattern`, choose one of the existing patterns:
+    * `"multi_category_pagination"`
+    * `"single_list_pagination"`
+    * `"single_page_filter"`
+
+That's it! You do not need to touch any Python code.
+
+#### To Add a New Scraping Pattern:
+
+1.  Create a new Python file in `src/extract/competitors/` that contains your custom scraping logic.
+2.  Open `src/extract/__init__.py` and add your new pattern and its corresponding module to the `PATTERN_MAP` dictionary.
 
 ## Project Files
 
@@ -94,10 +98,11 @@ The application is architected with a clean separation between the command-line 
 * **`src/orchestrator.py`**: The central orchestrator containing the core application logic.
 * **`config/`**:
     * `config.json`: Core application settings.
-    * `competitor_seed_data.json`: Data for competitor websites.
+    * `competitor_seed_data.json`: Data and pattern assignments for competitors.
     * `performance_log.json`: (auto-generated) Stores data for time estimates.
 * **`src/`**: Contains all core Python source code.
     * **`extract/`**: Module for the asynchronous scraping phase.
+        * `competitors/`: Contains the different scraping pattern modules (e.g., `multi_category_pagination.py`).
     * **`transform/`**: Module for the data enrichment phase.
     * **`load.py`**: Handles the final output and file saving.
 * **`.env`**: Securely stores your `GEMINI_API_KEY`.

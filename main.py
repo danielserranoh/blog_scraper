@@ -6,11 +6,6 @@ import logging
 from termcolor import colored
 import asyncio
 from dotenv import load_dotenv
-import os
-import json
-import random
-import time
-import csv
 
 # Import the main orchestrator function
 from src.orchestrator import run_pipeline
@@ -21,7 +16,11 @@ class ColorFormatter(logging.Formatter):
     def format(self, record):
         log_message = super().format(record)
         log_color = self.COLORS.get(record.levelname)
-        log_level = colored(f"{record.levelname}:", color=log_color, attrs=['bold'])
+        
+        # --- FIX: Convert the log level name to lowercase ---
+        level_name = record.levelname.lower()
+        
+        log_level = colored(f"{level_name}:", color=log_color, attrs=['bold'])
         return f"{log_level} {log_message}"
 
 def setup_logger():

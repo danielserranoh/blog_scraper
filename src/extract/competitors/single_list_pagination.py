@@ -12,7 +12,7 @@ from .._common import is_recent, _get_existing_urls, _get_post_details
 
 logger = logging.getLogger(__name__)
 
-async def extract_from_modern_campus(config, days, scrape_all, batch_size):
+async def scrape(config, days, scrape_all, batch_size):
     """
     Scrapes the Modern Campus blog by first getting a list of post URLs
     and then visiting each one to get full details.

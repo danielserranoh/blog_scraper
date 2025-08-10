@@ -74,6 +74,7 @@ async def scrape(config, days, scrape_all, batch_size):
                             
                             if full_post_url in existing_urls:
                                 logger.debug(f"  Skipping existing post: {full_post_url}")
+                                stats.skipped += 1
                                 continue
                             
                             tasks.append(_get_post_details(client, base_url, post_url_path, config['name']))
@@ -83,6 +84,8 @@ async def scrape(config, days, scrape_all, batch_size):
                         post_details_list = await asyncio.gather(*tasks)
                         for post_details in post_details_list:
                             if post_details:
+                                stats.successful += 1
+                                print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
                                 posts_to_process.append(post_details)
                                 if len(posts_to_process) >= batch_size:
                                     yield posts_to_process

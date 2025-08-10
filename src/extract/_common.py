@@ -15,6 +15,14 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+class ScrapeStats:
+    """A simple class to hold statistics for a scraping run."""
+    def __init__(self):
+        self.successful = 0
+        self.skipped = 0
+        self.errors = 0
+        self.failed_urls = []
+
 def is_recent(post_date, days=30):
     """
     Checks if a post's publication date is within the last `days` from today.
@@ -140,4 +148,6 @@ async def _get_post_details(client, base_url, post_url_path, competitor_name):
 
     except httpx.RequestError as e: 
         logger.error(f"Error fetching post details from {full_url}: {e}")
+        stats.errors += 1
+        stats.failed_urls.append(full_url)
         return None

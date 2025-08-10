@@ -51,6 +51,7 @@ async def scrape(config, days, scrape_all, batch_size):
 
                     if full_post_url in existing_urls:
                         logger.debug(f"  Skipping existing post: {full_post_url}")
+                        stats.skipped += 1
                         continue
 
                     # Pass the full_post_url directly as post_url, and base_url as empty string
@@ -62,6 +63,8 @@ async def scrape(config, days, scrape_all, batch_size):
 
             for post_details in post_details_list:
                 if post_details:
+                    stats.successful += 1
+                    print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
                     if post_details['publication_date'] != 'N/A':
                         pub_date = datetime.strptime(post_details['publication_date'], '%Y-%m-%d')
                         if scrape_all or is_recent(pub_date, days):

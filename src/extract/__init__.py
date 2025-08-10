@@ -21,6 +21,9 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
     competitor_name = config['name']
     pattern = config.get('scraping_pattern')
 
+    stats = ScrapeStats()
+    logger.info(f"--- Starting scrape for '{competitor_name}' ---")
+
     if not pattern or pattern not in PATTERN_MAP:
         logger.warning(f"No valid scraping_pattern found for '{competitor_name}'. Skipping.")
         return
@@ -30,6 +33,10 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
         module_path = PATTERN_MAP[pattern]
         scraper_module = importlib.import_module(module_path, package='src.extract')
         
+        # Pass the stats object to the scrape function
+        async for batch in scraper_module.scrape(config, days, scrape_all, batch_size, stats):
+            yield batch
+
         # Call the standardized 'scrape' function within that module
         async for batch in scraper_module.scrape(config, days, scrape_all, batch_size):
             yield batch
@@ -38,3 +45,19 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
         logger.error(f"Could not import the scraper module for pattern '{pattern}'. Skipping '{competitor_name}'.")
     except Exception as e:
         logger.error(f"An unexpected error occurred while scraping '{competitor_name}': {e}")
+    finally:
+        # Add a newline to move past the dynamic progress counter
+        print() 
+        logger.info("--- Scrape Summary ---")
+        logger.info(f"  New Posts Found: {stats.successful}")
+        logger.info(f"  Skipped (already exist): {stats.skipped}")
+
+        if stats.errors > 0:
+            logger.warning(f"  Errors (failed requests): {stats.errors}")
+
+        if stats.failed_urls:
+            logger.warning("  The following URLs failed to scrape:")
+            for url in stats.failed_urls:
+                logger.warning(f"    - {url}")
+
+        logger.info("----------------------")

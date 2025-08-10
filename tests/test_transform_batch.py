@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, PropertyMock
 
 # Import the module we are testing to patch it directly
 from src.transform import batch
-
+from google.genai.errors import APIError
 
 # Configure a simple logger for tests
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -41,7 +41,6 @@ def test_create_gemini_batch_job_success(mocker, mock_posts):
     """
     mock_files_service = MagicMock()
     mock_batches_service = MagicMock()
-    # This is the mock for the main client object
     mock_client = MagicMock(files=mock_files_service, batches=mock_batches_service)
 
     mock_uploaded_file = MagicMock(spec=['name'])
@@ -52,8 +51,7 @@ def test_create_gemini_batch_job_success(mocker, mock_posts):
     mock_created_job.name = 'batches/mock-job-id'
     mock_batches_service.create.return_value = mock_created_job
 
-    # Patch the Client class in the 'batch' module to return our mock
-    mocker.patch.object(batch, 'genai', Client=lambda: mock_client)
+    mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
     mocker.patch('os.makedirs')
     mocker.patch('builtins.open', mocker.mock_open())
     mocker.patch('os.remove')
@@ -64,24 +62,16 @@ def test_create_gemini_batch_job_success(mocker, mock_posts):
 
 def test_create_gemini_batch_job_api_error(mocker, mock_posts):
     """
-    Tests that the function returns None when the API raises an error.
+    Tests that the function returns None when any exception occurs.
     """
-    # --- FIX: We test two things:
-    # 1. That an exception inside the function is caught.
-    # 2. That the function returns None as a result.
-    
-    # Let's simulate the API call failing, not the client creation
     mock_files_service = MagicMock()
-    # Make the 'upload' call raise an error
-    mock_files_service.upload.side_effect = Exception("Failed to upload")
+    mock_files_service.upload.side_effect = APIError("Failed to upload", response_json={})
     mock_client = MagicMock(files=mock_files_service)
 
     mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
     mocker.patch('os.makedirs')
     mocker.patch('builtins.open', mocker.mock_open())
     
-    # The function should catch the exception and return None
-    # We add a dummy model name to match the function's signature
     job_id = batch.create_gemini_batch_job(mock_posts, "test_competitor", "gemini-model")
     assert job_id is None
 
@@ -107,20 +97,29 @@ def test_download_gemini_batch_results_success(mocker, mock_posts):
     Tests a successful download and parsing of results.
     """
     response1_data = json.dumps({"summary": "Perfect summary.", "seo_keywords": ["k1", "k2"]})
-    mock_part1 = MagicMock(text=response1_data)
-    mock_candidate1 = MagicMock(content=MagicMock(parts=[mock_part1]))
-    mock_response_item_1 = MagicMock(metadata={'key': 'post-0'}, candidates=[mock_candidate1])
-
-    mock_job = MagicMock(name='BatchJob')
-    type(mock_job).inlined_responses = PropertyMock(return_value=[mock_response_item_1])
     
+    mock_job = MagicMock(name='BatchJob')
+    mock_state = MagicMock(name='JobState')
+    mock_state.name = 'JOB_STATE_SUCCEEDED'
+    type(mock_job).state = PropertyMock(return_value=mock_state)
+    type(mock_job).dest = PropertyMock(return_value=MagicMock(file_name="results.jsonl"))
+
     mock_batches_service = MagicMock()
     mock_batches_service.get.return_value = mock_job
-    mock_client = MagicMock(batches=mock_batches_service)
+    
+    mock_files_service = MagicMock()
+    mock_client = MagicMock(batches=mock_batches_service, files=mock_files_service)
 
-    # We only need to mock the Client, as 'configure' is no longer used
     mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
     
+    # --- FIX: Define result_json BEFORE using it ---
+    result_json = {
+        "key": "post-0",
+        "response": { "candidates": [{"content": {"parts": [{"text": response1_data}]}}]}
+    }
+    # Now that it's defined, we can set the return value for the mock.
+    mock_files_service.download.return_value = json.dumps(result_json).encode('utf-8')
+
     transformed_posts = batch.download_gemini_batch_results("batches/mock-job-id", [mock_posts[0]])
     
     assert transformed_posts[0]['summary'] == "Perfect summary."

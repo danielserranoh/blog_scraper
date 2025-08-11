@@ -42,19 +42,25 @@ def _get_existing_urls(competitor_name):
     state_filepath = os.path.join('state', competitor_name, f"{competitor_name}_state.csv")
 
     if os.path.exists(state_filepath):
-        with open(state_filepath, mode='r', newline='', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if 'url' in row:
-                    existing_urls.add(row['url'])
-        logger.info(f"Found {len(existing_urls)} existing URLs in state file: {state_filepath}.")
+        try:
+            with open(state_filepath, mode='r', newline='', encoding='utf-8') as csvfile:
+                # Use DictReader to handle potential header mismatches gracefully
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    # Check if the 'url' column exists in the row before accessing it
+                    if 'url' in row and row['url']:
+                        existing_urls.add(row['url'])
+            logger.info(f"Found {len(existing_urls)} existing URLs in state file: {state_filepath}.")
+        except Exception as e:
+            logger.error(f"Could not read state file at {state_filepath}: {e}")
+            # Continue with an empty set of URLs if the file is corrupt
     else:
         logger.info("No previous state file found. Scraping all posts.")
 
     return existing_urls
 
 
-async def _get_post_details(client, base_url, post_url_path, competitor_name):
+async def _get_post_details(client, base_url, post_url_path, competitor_name, stats):
     """
     Scrapes an individual blog post page to find the title, URL, publication date,
     content, summary, and SEO keywords.

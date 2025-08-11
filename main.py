@@ -33,6 +33,7 @@ def setup_logger():
     root_logger.addHandler(console_handler)
     # Silence the noisy google-genai library
     logging.getLogger("google.generativeai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 def main():
     """Parses command-line arguments and starts the ETL pipeline."""

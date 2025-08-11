@@ -12,7 +12,7 @@ from .._common import is_recent, _get_existing_urls, _get_post_details
 
 logger = logging.getLogger(__name__)
 
-async def scrape(config, days, scrape_all, batch_size):
+async def scrape(config, days, scrape_all, batch_size, stats):
     """
     Scrapes the Squiz blog by scraping its main blog page (which contains all posts).
     Yields posts in batches.
@@ -55,7 +55,7 @@ async def scrape(config, days, scrape_all, batch_size):
                         continue
 
                     # Pass the full_post_url directly as post_url, and base_url as empty string
-                    tasks.append(_get_post_details(client, "", full_post_url, config['name'])) 
+                    tasks.append(_get_post_details(client, "", full_post_url, config['name'], stats)) 
             if tasks:
                 logger.info(f"  Found {len(tasks)} new posts on this page. Fetching details...")
 
@@ -64,7 +64,7 @@ async def scrape(config, days, scrape_all, batch_size):
             for post_details in post_details_list:
                 if post_details:
                     stats.successful += 1
-                    print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
+                    #print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
                     if post_details['publication_date'] != 'N/A':
                         pub_date = datetime.strptime(post_details['publication_date'], '%Y-%m-%d')
                         if scrape_all or is_recent(pub_date, days):

@@ -12,7 +12,7 @@ from .._common import is_recent, _get_existing_urls, _get_post_details
 
 logger = logging.getLogger(__name__)
 
-async def scrape(config, days, scrape_all, batch_size):
+async def scrape(config, days, scrape_all, batch_size, stats):
     """
     Scrapes the TerminalFour blog by iterating through its category URLs
     and handling pagination for each category correctly. Yields posts in batches.
@@ -20,6 +20,8 @@ async def scrape(config, days, scrape_all, batch_size):
     posts_to_process = []
     base_url = config['base_url']
     existing_urls = _get_existing_urls(config['name'])
+
+    processed_in_run_urls = set()
 
     async with httpx.AsyncClient() as client:
         for category_path in config['urls']:
@@ -72,12 +74,15 @@ async def scrape(config, days, scrape_all, batch_size):
                             post_url_path = link_element['href']
                             full_post_url = f"{base_url.rstrip('/')}/{post_url_path.lstrip('/')}"
                             
-                            if full_post_url in existing_urls:
-                                logger.debug(f"  Skipping existing post: {full_post_url}")
+                            if full_post_url in existing_urls or full_post_url in processed_in_run_urls:
+                                #if full_post_url in existing_urls:
                                 stats.skipped += 1
+                                logger.debug(f"  Skipping duplicate post: {full_post_url}")
                                 continue
-                            
-                            tasks.append(_get_post_details(client, base_url, post_url_path, config['name']))
+
+                            # If the URL is new for this run, add it to our tracking set and the task list.    
+                            processed_in_run_urls.add(full_post_url)
+                            tasks.append(_get_post_details(client, base_url, post_url_path, config['name'], stats))
 
                     if tasks:
                         logger.info(f"  Found {len(tasks)} new posts on this page. Fetching details...")
@@ -85,7 +90,7 @@ async def scrape(config, days, scrape_all, batch_size):
                         for post_details in post_details_list:
                             if post_details:
                                 stats.successful += 1
-                                print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
+                                #print(f"\r  Progress: {stats.successful} new posts found, {stats.skipped} skipped.", end="", flush=True)
                                 posts_to_process.append(post_details)
                                 if len(posts_to_process) >= batch_size:
                                     yield posts_to_process

@@ -46,10 +46,10 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
     
     finally:
         # Print the final summary report
-        print() 
-        logger.info(f"--- Scrape Summary for '{competitor_name}' ---")
+        print()
+        logger.info(f"\n--- Scrape Summary for '{competitor_name}' ---")
         logger.info(f"  New Posts Found: {stats.successful}")
-        logger.info(f"  Skipped (already exist): {stats.skipped}")
+        logger.info(f"  Skipped (already exist): {stats.skipped}\n")
         
         if stats.errors > 0:
             logger.warning(f"  Errors (failed requests): {stats.errors}")

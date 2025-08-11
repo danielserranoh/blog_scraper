@@ -16,3 +16,6 @@ old/
 # Other project-specific files to ignore
 *.pyc
 *.log
+
+.DS_Store
+.ds_store

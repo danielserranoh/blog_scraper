@@ -115,7 +115,7 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
     if len(all_posts) < batch_threshold and not scrape_all:
         transformed_posts = await transform_posts_live(all_posts, live_model)
         storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(transformed_posts, name)
+        storage_adapter.save(transformed_posts, name, mode='append')
     else:
         raw_posts_file_path = _save_raw_posts(all_posts, name)
         if not raw_posts_file_path:
@@ -166,7 +166,7 @@ async def check_and_load_results(competitor, app_config, num_posts=0):
         transformed_posts = download_gemini_batch_results(job_id, original_posts)
         if transformed_posts:
             storage_adapter = get_storage_adapter(app_config)
-            storage_adapter.save(transformed_posts, name)
+            storage_adapter.save(transformed_posts, name, mode='append')
         else:
             logger.warning(f"No processed posts could be recovered for {name}.")
 
@@ -186,8 +186,8 @@ async def run_enrichment_process(competitor, batch_threshold, live_model, batch_
             enriched_map = {post['url']: post for post in enriched_posts}
             final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
             storage_adapter = get_storage_adapter(app_config)
-            storage_adapter.save(final_posts, competitor['name'])
-            logger.info(f"Successfully enriched {len(enriched_posts)} posts for '{competitor['name']}'.")
+            storage_adapter.save(final_posts, competitor['name'], mode='overwrite')
+            logger.info(f"Successfully enriched and updated state for {len(enriched_posts)} posts for '{competitor['name']}'.")
         else:
             logger.warning(f"Enrichment process failed for {competitor['name']}.")
     else:
@@ -300,7 +300,7 @@ async def run_pipeline(args):
         
     batch_threshold = app_config.get('batch_threshold', 10)
     live_model = app_config.get('models', {}).get('live', 'gemini-2.0-flash')
-    batch_model = app_config.get('models', {}).get('batch', 'gemini-2.5-flash')
+    batch_model = app_config.get('models', {}).get('batch', 'gemini-2.0-flash-lite')
 
     competitors_to_process = _get_competitors_to_process(competitor_config, args.competitor)
     if not competitors_to_process:
@@ -321,13 +321,13 @@ async def run_pipeline(args):
             if not os.path.isdir(state_folder):
                 continue
 
-            csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor['name'])]
-            if not csv_files:
+            # In enrichment, we always look for the single state file
+            state_filepath = os.path.join(state_folder, f"{competitor['name']}_state.csv")
+            if not os.path.exists(state_filepath):
                 continue
 
-            latest_file = os.path.join(state_folder, max(csv_files))
             all_posts, to_enrich = [], []
-            with open(latest_file, mode='r', newline='', encoding='utf-8') as f:
+            with open(state_filepath, mode='r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for post in reader:
                     all_posts.append(post)

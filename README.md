@@ -115,3 +115,9 @@ That's it! You do not need to touch any Python code.
 * **`state/`**: (auto-generated) Stores the primary data state in CSV files.
 * **`exports/`**: (auto-generated) Stores the final, user-facing output files.
 * **`workspace/`**: (auto-generated) Stores temporary files during batch processing.
+
+# References:
+
+https://ai.google.dev/gemini-api/docs/batch-mode
+https://ai.google.dev/gemini-api/docs/files
+https://github.com/googleapis/python-genai/blob/main/codegen_instructions.md

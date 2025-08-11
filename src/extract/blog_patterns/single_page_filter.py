@@ -24,7 +24,7 @@ async def scrape(config, days, scrape_all, batch_size, stats):
     async with httpx.AsyncClient() as client:
         # Squiz: Main blog page shows all posts, categories are filters.
         # We only need to scrape the single main blog URL once.
-        main_blog_url = f"{base_url.rstrip('/')}/{config['urls'][0].lstrip('/')}"
+        main_blog_url = f"{base_url.rstrip('/')}/{config['category_paths'][0].lstrip('/')}"
         logger.info(f"Scanning main blog page for Squiz: {main_blog_url}")
         try:
             # Explicitly follow redirects for the main blog page

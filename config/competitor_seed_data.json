@@ -2,8 +2,13 @@
   "competitors": [
     {
       "name": "terminalfour",
+      "base_url": "https://www.terminalfour.com",
       "scraping_pattern": "multi_category_pagination",
-      "urls": [
+      "pagination_pattern": {
+        "type": "linked_path",
+        "selector": "div.pagination span.currentpage + a"
+      },
+      "category_paths": [
         "blog/",
         "blog/cats/accessibility/",
         "blog/cats/content-strategy/",
@@ -19,26 +24,71 @@
         "blog/cats/video/",
         "blog/cats/web-development/"
       ],
-      "base_url": "https://www.terminalfour.com",
-      "post_list_selector": "article.masthead__featured-article a, article.article-card a"
+      
+      "post_list_selector": "article.masthead__featured-article a, article.article-card a",
+      "date_selector": "time[datetime]",
+      "content_selector": "div.article-content__main",
+      "content_filter_selector": null,
+      "next_page_selector": "div.pagination span.currentpage + a"
+      
     },
     {
       "name": "modern campus",
       "scraping_pattern": "single_list_pagination",
-      "urls": [
+      "base_url": "https://moderncampus.com",
+      "structure_pattern": "single_list",
+      "pagination_pattern": {
+        "type": "numeric_query",
+        "query_param": "page"
+      },
+      "category_paths": [
         "blog/index.html"
       ],
-      "base_url": "https://moderncampus.com",
-      "post_list_selector": ".filter-grid .col .card-body h5 a"
+      "post_list_selector": ".filter-grid .col .card-body h5 a",
+      "date_selector": "p:contains('Last updated:')",
+      "content_selector": "div.post-content",
+      "content_filter_selector": null,
+      "next_page_selector": "a.next.page-numbers"
     },
     {
       "name": "squiz",
-      "scraping_pattern": "single_page_filter",
-      "urls": [
+      "base_url": "https://www.squiz.net",
+      "structure_pattern": "single_page",
+      "pagination_pattern": null,
+      "category_paths": [
         "blog"
       ],
-      "base_url": "https://www.squiz.net",
-      "post_list_selector": "a.cards-list__card"
+      "post_list_selector": "a.cards-list__card",
+      "date_selector": "span.blog-banner__contents-author__date",
+      "content_selector": "div.blog-post-body",
+      "content_filter_selector": "h3:has-text(\"Skip ahead:\") + ul",
+      "next_page_selector": null
+    },
+    {
+      "name": "oho",
+      "base_url": "https://www.oho.com",
+      "structure_pattern": "multi_category",
+      "pagination_pattern": {
+        "type": "linked_ajax",
+        "selector": "li.pager__item--next a"
+      },
+      "category_paths": [
+        "blog",
+        "blog/listing?topic=4",
+        "blog/listing?topic=5",
+        "blog/listing?topic=14",
+        "blog/listing?topic=25",
+        "blog/listing?topic=32",
+        "blog/listing?topic=33",
+        "blog/listing?topic=74",
+        "blog/listing?topic=75",
+        "blog/listing?topic=77"
+      ],
+      "post_list_selector": "article.listing-item--blog h2 a",
+      "date_selector": "time[datetime]",
+      "content_selector": "div.wysiwyg",
+      "content_filter_selector": null,
+      "next_page_selector": "li.pager__item--next a"
     }
   ]
 }

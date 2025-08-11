@@ -23,7 +23,7 @@ async def scrape(config, days, scrape_all, batch_size, stats):
     existing_urls = _get_existing_urls(config['name'])
 
     async with httpx.AsyncClient() as client:
-        for category_path in config['urls']: 
+        for category_path in config['category_paths']: 
             page_number = 1
             while True:
                 current_url = f"{base_url.rstrip('/')}/{category_path.lstrip('/')}".split('index.html')[0] + f"index.html?page={page_number}"

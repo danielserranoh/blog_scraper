@@ -18,28 +18,58 @@ from . import exporters
 logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
-def _save_job_id(competitor_name, job_id):
-    """Saves a batch job ID to a text file in the workspace directory."""
-    try:
-        workspace_folder = os.path.join('workspace', competitor_name)
-        os.makedirs(workspace_folder, exist_ok=True)
-        job_id_file_path = os.path.join(workspace_folder, "batch_job_id.txt")
-        with open(job_id_file_path, "w") as f:
-            f.write(job_id)
-        logger.info(f"Submitted Gemini batch job: {job_id}. Job ID saved to '{job_id_file_path}'")
-    except IOError as e:
-        logger.error(f"Could not save job ID {job_id} to file: {e}")
+def _split_posts_into_chunks(posts, max_size_mb=95):
+    """
+    Splits a list of posts into chunks, ensuring the estimated size of each
+    chunk's JSONL file is below the max_size_mb limit.
+    """
+    max_size_bytes = max_size_mb * 1024 * 1024
+    chunks = []
+    current_chunk = []
+    current_size = 0
 
-def _save_raw_posts(posts, competitor_name):
-    """Saves a list of posts to a temporary JSONL file in the workspace."""
+    for post in posts:
+        post_size = len(json.dumps(post).encode('utf-8')) + 1
+
+        if current_size + post_size > max_size_bytes and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = [post]
+            current_size = post_size
+        else:
+            current_chunk.append(post)
+            current_size += post_size
+
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    return chunks
+
+def _save_pending_jobs(competitor_name, job_tracking_list):
+    """Saves a list of pending job details to a JSON file."""
     try:
         workspace_folder = os.path.join('workspace', competitor_name)
         os.makedirs(workspace_folder, exist_ok=True)
-        raw_posts_file_path = os.path.join(workspace_folder, "temp_posts.jsonl")
+        jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
+        with open(jobs_file_path, "w") as f:
+            json.dump(job_tracking_list, f, indent=4)
+        logger.info(f"Saved {len(job_tracking_list)} pending job(s) to '{jobs_file_path}'")
+    except IOError as e:
+        logger.error(f"Could not save pending jobs file: {e}")
+
+
+def _save_raw_posts(posts, competitor_name, chunk_num=None):
+    """Saves a list of posts to a temporary JSONL file, with chunk number if provided."""
+    try:
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
+        
+        filename = f"temp_posts_chunk_{chunk_num}.jsonl" if chunk_num else "temp_posts.jsonl"
+        raw_posts_file_path = os.path.join(workspace_folder, filename)
+        
         with open(raw_posts_file_path, "w") as f:
             for post in posts:
                 f.write(json.dumps(post) + "\n")
-        logger.info(f"Saved {len(posts)} raw posts to '{raw_posts_file_path}' for later processing.")
+        logger.info(f"Saved {len(posts)} raw posts to '{os.path.basename(raw_posts_file_path)}' for later processing.")
         return raw_posts_file_path
     except IOError as e:
         logger.error(f"Could not save raw posts to file: {e}")
@@ -104,7 +134,7 @@ def _update_performance_log(job_duration_seconds, num_posts):
 # --- Main Workflow Functions ---
 
 async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
-    """Scrapes the blog and decides whether to use live or batch processing."""
+    """Scrapes the blog, chunks if necessary, and submits jobs."""
     name = competitor['name']
     all_posts = []
     async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
@@ -117,90 +147,111 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
         storage_adapter = get_storage_adapter(app_config)
         storage_adapter.save(transformed_posts, name, mode='append')
     else:
-        raw_posts_file_path = _save_raw_posts(all_posts, name)
-        if not raw_posts_file_path:
-            return
-        job_id = create_gemini_batch_job(all_posts, name, batch_model)
-        if job_id:
-            _save_job_id(name, job_id)
-            await _prompt_to_wait_for_job(competitor, len(all_posts), app_config)
-        else:
-            os.remove(raw_posts_file_path)
+        await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config)
+
 
 async def check_and_load_results(competitor, app_config, num_posts=0):
-    """Checks for a saved job ID, polls the API, and loads results."""
+    """Checks all pending jobs for a competitor and loads results when all are complete."""
     name = competitor['name']
     workspace_folder = os.path.join('workspace', name)
-    job_id_file_path = os.path.join(workspace_folder, "batch_job_id.txt")
-    raw_posts_file_path = os.path.join(workspace_folder, "temp_posts.jsonl")
-    
-    with open(job_id_file_path, "r") as f:
-        job_id = f.read().strip()
-    
-    initial_delay, max_delay, multiplier, start_time = 30, 300, 2, time.time()
-    delay = initial_delay
-    
-    while True:
-        status = check_gemini_batch_job(job_id)
-        if status not in ["JOB_STATE_PENDING", "JOB_STATE_RUNNING"]:
-            break
-        jitter = random.uniform(0, 5)
-        wait_time = min(delay, max_delay) + jitter
-        logger.info(f"Job for '{name}' is {status}. Waiting for approximately {int(wait_time)} seconds...")
-        await asyncio.sleep(wait_time)
-        delay *= multiplier
-    
-    if status == "JOB_STATE_SUCCEEDED":
-        job_duration = time.time() - start_time
-        logger.info(f"Gemini batch job '{job_id}' succeeded in {job_duration:.2f} seconds!")
-        if num_posts > 0:
-            _update_performance_log(job_duration, num_posts)
+    jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
 
+    with open(jobs_file_path, "r") as f:
+        pending_jobs = json.load(f)
+
+    logger.info(f"--- Status for '{name}': Found {len(pending_jobs)} pending job(s) ---")
+    
+    all_succeeded = True
+    total_posts = 0
+    status_summary = {}
+
+    for job_info in pending_jobs:
+        job_id = job_info['job_id']
+        status = check_gemini_batch_job(job_id)
+        status_summary[job_id] = status
+        total_posts += job_info['num_posts']
+        if status != "JOB_STATE_SUCCEEDED":
+            all_succeeded = False
+    
+    # Print summary
+    for job_id, status in status_summary.items():
+        logger.info(f"  - Job {job_id}: {status}")
+
+    if not all_succeeded:
+        logger.info("--- Not all jobs have succeeded. Please check again later. ---")
+        return
+
+    # If all jobs succeeded, process the results
+    logger.info(f"--- All {len(pending_jobs)} jobs for '{name}' succeeded! Consolidating results... ---")
+    all_transformed_posts = []
+    start_time = time.time()
+
+    for job_info in pending_jobs:
+        job_id = job_info['job_id']
+        raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
+        
         original_posts = None
         if os.path.exists(raw_posts_file_path):
             with open(raw_posts_file_path, "r") as f:
                 original_posts = [json.loads(line) for line in f]
-        else:
-            logger.warning(f"Original raw posts file not found: '{raw_posts_file_path}'. Recovering from download.")
         
-        transformed_posts = download_gemini_batch_results(job_id, original_posts)
-        if transformed_posts:
-            storage_adapter = get_storage_adapter(app_config)
-            storage_adapter.save(transformed_posts, name, mode='append')
-        else:
-            logger.warning(f"No processed posts could be recovered for {name}.")
-
-        os.remove(job_id_file_path)
+        chunk_results = download_gemini_batch_results(job_id, original_posts)
+        all_transformed_posts.extend(chunk_results)
+        
+        # Clean up individual chunk files as we go
         if os.path.exists(raw_posts_file_path):
             os.remove(raw_posts_file_path)
-        logger.info(f"Cleaned up temporary files for job '{job_id}'")
-    else:
-        logger.error(f"Gemini batch job '{job_id}' failed or has an unknown status: {status}")
+
+    job_duration = time.time() - start_time
+    _update_performance_log(job_duration, total_posts)
+
+    if all_transformed_posts:
+        storage_adapter = get_storage_adapter(app_config)
+        storage_adapter.save(all_transformed_posts, name, mode='append')
+    
+    os.remove(jobs_file_path)
+    logger.info(f"Cleaned up all temporary files for '{name}'.")
 
 async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, app_config, all_posts_from_file, posts_to_enrich):
-    """Executes the enrichment for a single competitor, assuming discovery is done."""
+    """Enriches posts, chunks if necessary, and submits jobs."""
     if len(posts_to_enrich) < batch_threshold:
         enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
-        
         if enriched_posts:
             enriched_map = {post['url']: post for post in enriched_posts}
             final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
             storage_adapter = get_storage_adapter(app_config)
             storage_adapter.save(final_posts, competitor['name'], mode='overwrite')
-            logger.info(f"Successfully enriched and updated state for {len(enriched_posts)} posts for '{competitor['name']}'.")
-        else:
-            logger.warning(f"Enrichment process failed for {competitor['name']}.")
     else:
-        raw_posts_file_path = _save_raw_posts(posts_to_enrich, competitor['name'])
-        if not raw_posts_file_path:
-            return
-        job_id = create_gemini_batch_job(posts_to_enrich, competitor['name'], batch_model)
+        await _submit_chunks_for_processing(competitor, posts_to_enrich, batch_model, app_config)
+
+async def _submit_chunks_for_processing(competitor, posts, batch_model, app_config):
+    """Helper to chunk posts, submit jobs, and prompt the user."""
+    competitor_name = competitor['name']
+    post_chunks = _split_posts_into_chunks(posts)
+
+    if len(post_chunks) > 1:
+        logger.info(f"Job for '{competitor_name}' is too large and has been split into {len(post_chunks)} chunks.")
+
+    job_tracking_list = []
+    for i, chunk in enumerate(post_chunks):
+        logger.info(f"Submitting chunk {i+1}/{len(post_chunks)} with {len(chunk)} posts...")
+        raw_posts_path = _save_raw_posts(chunk, competitor_name, chunk_num=i+1)
+        if not raw_posts_path: continue
+
+        job_id = create_gemini_batch_job(chunk, competitor_name, batch_model)
         if job_id:
-            _save_job_id(competitor['name'], job_id)
-            await _prompt_to_wait_for_job(competitor, len(posts_to_enrich), app_config)
+            job_tracking_list.append({
+                "job_id": job_id,
+                "raw_posts_file": os.path.basename(raw_posts_path),
+                "num_posts": len(chunk)
+            })
         else:
-            logger.error(f"Failed to submit Gemini batch job for {competitor['name']}.")
-            os.remove(raw_posts_file_path)
+            logger.error(f"Failed to submit chunk {i+1}. It will be skipped.")
+            os.remove(raw_posts_path)
+    
+    if job_tracking_list:
+        _save_pending_jobs(competitor_name, job_tracking_list)
+        await _prompt_to_wait_for_job(competitor, len(posts), app_config)
 
 def run_export_process(competitors_to_export, export_format):
     """Finds the latest CSV for each competitor and exports the combined data."""
@@ -274,23 +325,20 @@ async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
 
 async def _run_job_check_phase(competitors_to_process, app_config):
     """Discovers, summarizes, and executes checks for any pending batch jobs."""
-    logger.info("--- Checking for any pending batch jobs before proceeding... ---")
+    logger.info("--- Checking for any pending batch jobs... ---")
+    all_jobs_to_check = []
     
-    jobs_to_check, no_jobs_found = [], []
     for competitor in competitors_to_process:
-        job_id_file_path = os.path.join("workspace", competitor['name'], "batch_job_id.txt")
-        if os.path.exists(job_id_file_path):
-            jobs_to_check.append(competitor)
+        jobs_file_path = os.path.join("workspace", competitor['name'], "pending_jobs.json")
+        if os.path.exists(jobs_file_path):
+            all_jobs_to_check.append(competitor)
         else:
-            no_jobs_found.append(competitor['name'])
+            logger.info(f"No pending jobs found for: {competitor['name']}")
     
-    if jobs_to_check:
-        logger.info(f"Found pending jobs for: {', '.join([c['name'] for c in jobs_to_check])}. Processing them now.")
-    if no_jobs_found:
-        logger.info(f"No pending jobs found for: {', '.join(no_jobs_found)}")
-    
-    for competitor in jobs_to_check:
-        await check_and_load_results(competitor, app_config)
+    if all_jobs_to_check:
+        logger.info(f"Found pending jobs for: {', '.join([c['name'] for c in all_jobs_to_check])}. Processing them now.")
+        for competitor in all_jobs_to_check:
+            await check_and_load_results(competitor, app_config)
 
 async def run_pipeline(args):
     """The primary orchestration function that executes the ETL workflow."""

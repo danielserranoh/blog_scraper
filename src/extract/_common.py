@@ -1,17 +1,15 @@
 # src/extract/_common.py
 # This file contains common helper functions for the extraction phase.
 
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-import re
-import json
-import time
-import os
 import csv
+import os
+import re
+from datetime import datetime
 import logging
 import httpx
-import asyncio
+from bs4 import BeautifulSoup
+from dateutil.parser import parse as dateparse
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -23,20 +21,10 @@ class ScrapeStats:
         self.errors = 0
         self.failed_urls = []
 
-def is_recent(post_date, days=30):
-    """
-    Checks if a post's publication date is within the last `days` from today.
-    """
-    # Create a naive `now` object for a clean comparison
-    now = datetime.now()
-    thirty_days_ago = now - timedelta(days=days)
-    
-    return post_date >= thirty_days_ago
-
 def _get_existing_urls(competitor_name):
     """
-    Reads the existing CSV file to get a list of all scraped post URLs.
-    This prevents re-scraping the same articles.
+    Reads the canonical state CSV file to get a list of all previously
+    scraped post URLs.
     """
     existing_urls = set()
     state_filepath = os.path.join('state', competitor_name, f"{competitor_name}_state.csv")
@@ -44,29 +32,23 @@ def _get_existing_urls(competitor_name):
     if os.path.exists(state_filepath):
         try:
             with open(state_filepath, mode='r', newline='', encoding='utf-8') as csvfile:
-                # Use DictReader to handle potential header mismatches gracefully
                 reader = csv.DictReader(csvfile)
                 for row in reader:
-                    # Check if the 'url' column exists in the row before accessing it
                     if 'url' in row and row['url']:
                         existing_urls.add(row['url'])
             logger.info(f"Found {len(existing_urls)} existing URLs in state file: {state_filepath}.")
         except Exception as e:
             logger.error(f"Could not read state file at {state_filepath}: {e}")
-            # Continue with an empty set of URLs if the file is corrupt
     else:
-        logger.info("No previous state file found. Scraping all posts.")
+        logger.info("No previous state file found. Starting a fresh scrape.")
 
     return existing_urls
 
-
-async def _get_post_details(client, base_url, post_url_path, competitor_name, stats):
+async def _get_post_details(client, base_url, post_url_path, config, stats): 
     """
-    Scrapes an individual blog post page to find the title, URL, publication date,
-    content, summary, and SEO keywords.
+    Scrapes an individual blog post page using selectors from the config.
     """
-    cleaned_post_url_path = post_url_path.rstrip(':') 
-    full_url = cleaned_post_url_path if cleaned_post_url_path.startswith('http://') or cleaned_post_url_path.startswith('https://') else f"{base_url.rstrip('/')}/{cleaned_post_url_path.lstrip('/')}"
+    full_url = post_url_path if post_url_path.startswith(('http://', 'https://')) else f"{base_url.rstrip('/')}/{post_url_path.lstrip('/')}"
     logger.debug(f"  Scraping details from: {full_url}")
     
     try:
@@ -74,72 +56,44 @@ async def _get_post_details(client, base_url, post_url_path, competitor_name, st
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # --- Extract Publication Date ---
-        pub_date = None
-        date_element_time = soup.find('time')
-        if date_element_time and 'datetime' in date_element_time.attrs:
-            pub_date_str = date_element_time['datetime']
-            date_formats_to_try = ['%Y-%m-%d %H:%M', '%Y-%m-%d']
-            for fmt in date_formats_to_try:
-                try:
-                    pub_date = datetime.strptime(pub_date_str, fmt)
-                    break
-                except ValueError:
-                    continue
-        else:
-            date_element_p = soup.find('p', string=lambda text: text and "Last updated:" in text)
-            if date_element_p:
-                date_text = date_element_p.text.replace('Last updated:', '').strip()
-                try:
-                    pub_date = datetime.strptime(date_text, '%B %d, %Y')
-                except ValueError:
-                    pub_date = None
-            elif soup.find('span', class_='blog-banner__contents-author__date'): 
-                date_element_squiz = soup.find('span', class_='blog-banner__contents-author__date')
-                pub_date_str = date_element_squiz.text.strip()
-                try:
-                    pub_date = datetime.strptime(pub_date_str, '%d %b %Y')
-                except ValueError:
-                    pub_date = None
+        date_selector = config.get('date_selector')
+        content_selector = config.get('content_selector')
+        content_filter_selector = config.get('content_filter_selector')
 
-        # --- Extract Title ---
         title_element = soup.find('h1') or soup.find('h2')
         title = title_element.text.strip() if title_element else 'No Title Found'
         
-        # --- Extract Meta Keywords ---
+        # --- FIX: Re-introduced Meta Keyword Extraction ---
         keywords_meta = soup.find('meta', {'name': 'keywords'})
-        seo_meta_keywords = keywords_meta['content'] if keywords_meta and 'content' in keywords_meta.attrs else 'N/A'
+        seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'
 
-        # --- Extract Content ---
-        content_container = soup.find('div', class_=['article-content__main', 'post-content', 'blog-post-body', 'item-content', 'no-wysiwyg'])
+        pub_date = None
+        if date_selector:
+            date_element = soup.select_one(date_selector)
+            if date_element:
+                date_text = date_element.get('datetime') or date_element.get_text()
+                try:
+                    pub_date = dateparse(date_text)
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not parse date: '{date_text}' from {full_url}")
+        
         content_text = ""
-        if content_container:
-            # Specific logic to remove the table of contents for the 'squiz' competitor
-            if competitor_name == 'squiz':
-                # Find the 'Skip ahead:' header
-                skip_ahead_header = content_container.find('h3', string=lambda text: text and 'Skip ahead:' in text)
-                if skip_ahead_header:
-                    # Find the <ul> that immediately follows the header
-                    toc_list = skip_ahead_header.find_next_sibling('ul')
-                    if toc_list:
-                        toc_list.decompose() # This removes the element from the parse tree
-
-            for element in content_container.children:
-                # The 'ul' removal logic is now more specific and handled above,
-                # so we can remove the generic 'ul' skip.
-                # if element.name == 'ul':
-                #     continue
+        if content_selector:
+            content_container = soup.select_one(content_selector)
+            if content_container:
+                # --- FIX: Apply the content filter if it's defined in the config ---
+                if content_filter_selector:
+                    element_to_remove = content_container.select_one(content_filter_selector)
+                    if element_to_remove:
+                        element_to_remove.decompose() # Remove the element from the parse tree
                 
-                if hasattr(element, 'get_text'):
-                    content_text += element.get_text(separator=' ', strip=True) + " "
-
-            content_text = re.sub(r'\s+', ' ', content_text)
+                content_text = ' '.join(content_container.get_text(separator=' ', strip=True).split())
 
         return {
             'title': title,
             'url': full_url,
             'publication_date': pub_date.strftime('%Y-%m-%d') if pub_date else 'N/A',
-            'content': content_text.strip() if content_text else 'N/A',
+            'content': content_text if content_text else 'N/A',
             'summary': 'N/A',
             'seo_keywords': 'N/A',
             'seo_meta_keywords': seo_meta_keywords
@@ -150,3 +104,35 @@ async def _get_post_details(client, base_url, post_url_path, competitor_name, st
         stats.errors += 1
         stats.failed_urls.append(full_url)
         return None
+    
+
+def get_next_page_url(pagination_config, soup, current_url, page_number, base_url):
+    """
+    Determines the URL of the next page to scrape based on the pagination pattern.
+    Returns None if there is no next page.
+    """
+    if not pagination_config:
+        return None
+
+    pagination_type = pagination_config.get('type')
+
+    if pagination_type == "linked_path" or pagination_type == "linked_ajax":
+        selector = pagination_config.get('selector')
+        if selector:
+            next_link_element = soup.select_one(selector)
+            if next_link_element and next_link_element.get('href'):
+                return urljoin(base_url, next_link_element['href'])
+    
+    elif pagination_type == "numeric_query":
+        # This pattern continues as long as it finds posts on the page.
+        # The calling scraper must check if the last scrape yielded any posts.
+        # If it did, we generate the URL for the next page number.
+        query_param = pagination_config.get('query_param', 'page')
+        next_page_num = page_number + 1
+        # A simple way to handle URLs with or without existing params
+        if "?" in current_url:
+            return f"{current_url.split('?')[0]}?{query_param}={next_page_num}"
+        else:
+            return f"{current_url}?{query_param}={next_page_num}"
+            
+    return None # No next page found

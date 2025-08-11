@@ -9,3 +9,4 @@ pytest-asyncio
 pytest-mock
 respx
 google-generativeai
+python-dateutil

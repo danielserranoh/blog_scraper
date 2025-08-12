@@ -7,6 +7,9 @@ def _format_as_txt(posts):
     """Formats a list of posts into a plain text string."""
     output = []
     for post in posts:
+        # Add the competitor name to the output for clarity in combined files
+        if 'competitor' in post:
+            output.append(f"Competitor: {post['competitor']}")
         output.append(f"Title: {post.get('title', 'N/A')}")
         output.append(f"Publication Date: {post.get('publication_date', 'N/A')}")
         output.append(f"URL: {post.get('url', 'N/A')}")
@@ -27,6 +30,8 @@ def _format_as_md(posts):
     """Formats a list of posts into a Markdown string."""
     output = []
     for post in posts:
+        if 'competitor' in post:
+            output.append(f"### Competitor: {post['competitor']}")
         output.append(f"## {post.get('title', 'N/A')}")
         output.append(f"**Date**: {post.get('publication_date', 'N/A')}  ")
         output.append(f"**URL**: <{post.get('url', 'N/A')}>  ")

@@ -3,7 +3,7 @@
     {
       "name": "terminalfour",
       "base_url": "https://www.terminalfour.com",
-      "scraping_pattern": "multi_category_pagination",
+      "scraping_pattern": "multi_category",
       "pagination_pattern": {
         "type": "linked_path",
         "selector": "div.pagination span.currentpage + a"
@@ -34,7 +34,7 @@
     },
     {
       "name": "modern campus",
-      "scraping_pattern": "single_list_pagination",
+      "scraping_pattern": "single_list",
       "base_url": "https://moderncampus.com",
       "structure_pattern": "single_list",
       "pagination_pattern": {
@@ -63,6 +63,23 @@
       "content_selector": "div.blog-post-body",
       "content_filter_selector": "h3:has-text(\"Skip ahead:\") + ul",
       "next_page_selector": null
+    },
+    {
+      "name": "contentsis",
+      "base_url": "https://www.contensis.com/",
+      "structure_pattern": "single_list",
+      "pagination_pattern": {
+        "type": "numeric_query",
+        "selector": "pageIndex="
+      },
+      "category_paths": [
+        "community/blog"
+      ],
+      "post_list_selector": "div.blog-card__content div a.blog-card__title",
+      "date_selector": "span.blog-hero__details--date",
+      "content_selector": "div.blog-post-canvas",
+      "content_filter_selector": null,
+      "next_page_selector": "li.pagination-item-next a"
     },
     {
       "name": "oho",

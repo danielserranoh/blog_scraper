@@ -12,8 +12,8 @@ from datetime import datetime
 
 from .extract import extract_posts_in_batches
 from .transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results, transform_posts_live
-from .load import get_storage_adapter
-from . import exporters
+from .state_management import get_storage_adapter
+from .load import exporters
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +253,7 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
         _save_pending_jobs(competitor_name, job_tracking_list)
         await _prompt_to_wait_for_job(competitor, len(posts), app_config)
 
-def run_export_process(competitors_to_export, export_format):
+def run_export_process(competitors_to_export, export_format, app_config):
     """Finds the latest CSV for each competitor and exports the combined data."""
     logger.info(f"--- Starting export process to {export_format.upper()} ---")
     
@@ -285,26 +285,30 @@ def run_export_process(competitors_to_export, export_format):
         return
 
     try:
-        formatted_data = exporters.export_data(all_posts_to_export, export_format)
+        formatted_data = exporters.export_data(all_posts_to_export, export_format, app_config)
     except ValueError as e:
         logger.error(e)
         return
+    # For gsheets, the returned data is a success message, not file content
+    if export_format == 'gsheets':
+        logger.info(formatted_data) # Just log the message
+    else:
+        # Save the new file
+        try:
+            if len(competitors_to_export) > 1:
+                base_filename = f"all_competitors-{datetime.now().strftime('%y%m%d')}"
+            else:
+                base_filename = f"{competitors_to_export[0]['name']}-{datetime.now().strftime('%y%m%d')}"
+            
+            export_dir = "exports"
+            os.makedirs(export_dir, exist_ok=True)
+            output_filepath = os.path.join(export_dir, f"{base_filename}.{export_format}")
 
-    try:
-        if len(competitors_to_export) > 1:
-            base_filename = f"all_competitors-{datetime.now().strftime('%y%m%d')}"
-        else:
-            base_filename = f"{competitors_to_export[0]['name']}-{datetime.now().strftime('%y%m%d')}"
-        
-        export_dir = "exports"
-        os.makedirs(export_dir, exist_ok=True)
-        output_filepath = os.path.join(export_dir, f"{base_filename}.{export_format}")
-
-        with open(output_filepath, "w", encoding="utf-8") as f:
-            f.write(formatted_data)
-        logger.info(f"Successfully exported {len(all_posts_to_export)} total posts to: {output_filepath}")
-    except IOError as e:
-        logger.error(f"Failed to write export file: {e}")
+            with open(output_filepath, "w", encoding="utf-8") as f:
+                f.write(formatted_data)
+            logger.info(f"Successfully exported {len(all_posts_to_export)} total posts to: {output_filepath}")
+        except IOError as e:
+            logger.error(f"Failed to write export file: {e}")
 
 async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     """Asks the user if they want to wait for a submitted batch job."""
@@ -359,7 +363,7 @@ async def run_pipeline(args):
             
     elif args.export:
         await _run_job_check_phase(competitors_to_process, app_config)
-        run_export_process(competitors_to_process, args.export)
+        run_export_process(competitors_to_process, args.export, app_config)
 
     elif args.enrich:
         logger.info("Discovering posts to enrich...")

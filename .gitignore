@@ -5,9 +5,11 @@ __pycache__/
 
 # Output files from the scraper
 state/
-output/
 workspace/
 exports/
+
+
+scraped/
 old/
 
 # Environment variables file
@@ -15,6 +17,7 @@ old/
 
 # Credentials file
 credentials.json
+token.json
 
 # Other project-specific files to ignore
 *.pyc

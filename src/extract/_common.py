@@ -115,8 +115,9 @@ def get_next_page_url(pagination_config, soup, current_url, page_number, base_ur
         return None
 
     pagination_type = pagination_config.get('type')
+   
 
-    if pagination_type == "linked_path" or pagination_type == "linked_ajax":
+    if pagination_type in ["linked_path", "linked_ajax"]:
         selector = pagination_config.get('selector')
         if selector:
             next_link_element = soup.select_one(selector)
@@ -124,15 +125,10 @@ def get_next_page_url(pagination_config, soup, current_url, page_number, base_ur
                 return urljoin(base_url, next_link_element['href'])
     
     elif pagination_type == "numeric_query":
-        # This pattern continues as long as it finds posts on the page.
-        # The calling scraper must check if the last scrape yielded any posts.
-        # If it did, we generate the URL for the next page number.
-        query_param = pagination_config.get('query_param', 'page')
+        query_param = pagination_config.get('selector', 'page') # Default to 'page' if not specified
         next_page_num = page_number + 1
-        # A simple way to handle URLs with or without existing params
-        if "?" in current_url:
-            return f"{current_url.split('?')[0]}?{query_param}={next_page_num}"
-        else:
-            return f"{current_url}?{query_param}={next_page_num}"
+        
+        base_path = current_url.split('?')[0]
+        return f"{base_path}?{query_param}={next_page_num}"
             
-    return None # No next page found
+    return None

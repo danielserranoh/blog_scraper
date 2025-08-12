@@ -65,12 +65,29 @@
       "next_page_selector": null
     },
     {
+      "name": "contentsis_2",
+      "base_url": "https://www.contensis.com/",
+      "structure_pattern": "single_list",
+      "pagination_pattern": {
+        "type": "linked_path",
+        "selector": "li.pagination-item-next a"
+      },
+      "category_paths": [
+        "community/blog"
+      ],
+      "post_list_selector": "div.blog-card__content div a.blog-card__title",
+      "date_selector": "span.blog-hero__details--date",
+      "content_selector": "div.blog-post-canvas",
+      "content_filter_selector": null,
+      "next_page_selector": null
+    },
+    {
       "name": "contentsis",
       "base_url": "https://www.contensis.com/",
       "structure_pattern": "single_list",
       "pagination_pattern": {
         "type": "numeric_query",
-        "selector": "pageIndex="
+        "selector": "pageIndex"
       },
       "category_paths": [
         "community/blog"

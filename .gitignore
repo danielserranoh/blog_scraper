@@ -13,6 +13,9 @@ old/
 # Environment variables file
 .env
 
+# Credentials file
+credentials.json
+
 # Other project-specific files to ignore
 *.pyc
 *.log

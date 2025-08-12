@@ -17,6 +17,7 @@ old/
 
 # Credentials file
 credentials.json
+token.json
 
 # Other project-specific files to ignore
 *.pyc

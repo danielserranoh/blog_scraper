@@ -50,7 +50,8 @@ def main():
     group.add_argument('--check-job', '-j', action='store_true', help='Check status of a batch job.')
     group.add_argument('--enrich', action='store_true', help='Enrich existing posts.')
     parser.add_argument('--competitor', '-c', type=str, help='Specify a single competitor.')
-    parser.add_argument('--export', '-e',type=str, choices=['txt', 'json', 'md'], help='Export the latest data to a specified format (requires --competitor).')
+    parser.add_argument('--export', '-e',type=str, choices=['txt', 'json', 'md', 'gsheets', 'csv'], help='Export the latest data to a specified format (requires --competitor).')
+
     
     args = parser.parse_args()
 

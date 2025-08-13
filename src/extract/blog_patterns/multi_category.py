@@ -17,6 +17,8 @@ async def scrape(config, days, scrape_all, batch_size, stats):
     
     pagination_config = config.get('pagination_pattern')
 
+    semaphore = asyncio.Semaphore(5) # Allow up to 5 concurrent detail scrapes
+
     async with httpx.AsyncClient() as client:
         # Loop through each category path provided in the config
         for category_path in config['category_paths']:
@@ -39,7 +41,12 @@ async def scrape(config, days, scrape_all, batch_size, stats):
                                 if post_url not in processed_in_run_urls: stats.skipped += 1
                                 continue
                             processed_in_run_urls.add(post_url)
-                            tasks.append(_get_post_details(client, base_url, link['href'], config, stats))
+                            
+                            async def fetch_with_semaphore(post_link):
+                                async with semaphore:
+                                    return await _get_post_details(client, base_url, post_link['href'], config, stats)
+
+                            tasks.append(fetch_with_semaphore(link))
 
                     if tasks:
                         post_details_list = await asyncio.gather(*tasks)

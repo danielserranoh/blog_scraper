@@ -5,7 +5,7 @@ import asyncio
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from .._common import _get_existing_urls, _get_post_details, get_next_page_url, ScrapeStats
-
+import random
 logger = logging.getLogger(__name__)
 
 async def scrape(config, days, scrape_all, batch_size, stats):
@@ -14,6 +14,9 @@ async def scrape(config, days, scrape_all, batch_size, stats):
     base_url = config['base_url']
     existing_urls = _get_existing_urls(config['name'])
     processed_in_run_urls = set()
+
+     # --- ADD THIS: Create a semaphore to limit concurrency ---
+    semaphore = asyncio.Semaphore(5) # Allow up to 5 concurrent detail scrapes
 
     async with httpx.AsyncClient() as client:
         # For this pattern, we only ever process the first path in the list
@@ -32,8 +35,15 @@ async def scrape(config, days, scrape_all, batch_size, stats):
                     if post_url in existing_urls or post_url in processed_in_run_urls:
                         if post_url not in processed_in_run_urls: stats.skipped += 1
                         continue
+
                     processed_in_run_urls.add(post_url)
-                    tasks.append(_get_post_details(client, base_url, link['href'], config, stats))
+
+                    async def fetch_with_semaphore(post_link_href):
+                        async with semaphore:
+                            await asyncio.sleep(random.uniform(0.5, 1.5))
+                            return await _get_post_details(client, base_url, post_link_href, config, stats)
+                    
+                    tasks.append(fetch_with_semaphore(link['href']))
             
             if tasks:
                 post_details_list = await asyncio.gather(*tasks)

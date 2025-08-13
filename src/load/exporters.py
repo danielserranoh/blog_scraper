@@ -136,7 +136,7 @@ def _export_to_gsheets(posts, config):
         logger.error("credentials.json not found. Please follow the authentication setup steps.")
         return "Failed to export: credentials.json not found."
 
-def export_data(posts, export_format):
+def export_data(posts, export_format, config):
     """
     Router function to format data based on the specified format.
     """

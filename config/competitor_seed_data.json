@@ -3,7 +3,7 @@
     {
       "name": "terminalfour",
       "base_url": "https://www.terminalfour.com",
-      "scraping_pattern": "multi_category",
+      "structure_pattern": "multi_category",
       "pagination_pattern": {
         "type": "linked_path",
         "selector": "div.pagination span.currentpage + a"
@@ -24,13 +24,12 @@
         "blog/cats/video/",
         "blog/cats/web-development/"
       ],
-      
       "post_list_selector": "article.masthead__featured-article a, article.article-card a",
       "date_selector": "time[datetime]",
+      "date_strip_prefix": null,
       "content_selector": "div.article-content__main",
       "content_filter_selector": null,
       "next_page_selector": "div.pagination span.currentpage + a"
-      
     },
     {
       "name": "modern campus",
@@ -46,38 +45,26 @@
       ],
       "post_list_selector": ".filter-grid .col .card-body h5 a",
       "date_selector": "p:contains('Last updated:')",
-      "content_selector": "div.post-content",
+      "date_strip_prefix": "Last updated:",
+      "content_selector": "div.item-content",
       "content_filter_selector": null,
-      "next_page_selector": "a.next.page-numbers"
+      "next_page_selector": "a.page-link:contains('Next')"
     },
     {
       "name": "squiz",
       "base_url": "https://www.squiz.net",
       "structure_pattern": "single_page",
-      "pagination_pattern": null,
+      "pagination_pattern": {
+        "type": null,
+        "selector": null
+      },
       "category_paths": [
         "blog"
       ],
       "post_list_selector": "a.cards-list__card",
       "date_selector": "span.blog-banner__contents-author__date",
-      "content_selector": "div.blog-post-body",
-      "content_filter_selector": "h3:has-text(\"Skip ahead:\") + ul",
-      "next_page_selector": null
-    },
-    {
-      "name": "contentsis_2",
-      "base_url": "https://www.contensis.com/",
-      "structure_pattern": "single_list",
-      "pagination_pattern": {
-        "type": "linked_path",
-        "selector": "li.pagination-item-next a"
-      },
-      "category_paths": [
-        "community/blog"
-      ],
-      "post_list_selector": "div.blog-card__content div a.blog-card__title",
-      "date_selector": "span.blog-hero__details--date",
-      "content_selector": "div.blog-post-canvas",
+      "date_strip_prefix": null,
+      "content_selector": "div.news-item__body",
       "content_filter_selector": null,
       "next_page_selector": null
     },
@@ -94,6 +81,7 @@
       ],
       "post_list_selector": "div.blog-card__content div a.blog-card__title",
       "date_selector": "span.blog-hero__details--date",
+      "date_strip_prefix": null,
       "content_selector": "div.blog-post-canvas",
       "content_filter_selector": null,
       "next_page_selector": "li.pagination-item-next a"
@@ -120,6 +108,7 @@
       ],
       "post_list_selector": "article.listing-item--blog h2 a",
       "date_selector": "time[datetime]",
+      "date_strip_prefix": null,
       "content_selector": "div.wysiwyg",
       "content_filter_selector": null,
       "next_page_selector": "li.pager__item--next a"

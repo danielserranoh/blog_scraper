@@ -54,9 +54,23 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
     try:
         response = await client.get(full_url, follow_redirects=True) 
         response.raise_for_status()
+
+        # --- NEW: Check if we were redirected back to a main page ---
+        final_url = str(response.url)
+        
+        # Create a set of the full, absolute URLs for the main category pages
+        main_category_urls = {urljoin(base_url, path) for path in config['category_paths']}
+
+        # Check if the final URL is one of these main pages
+        if final_url != full_url and final_url in main_category_urls:
+            logger.warning(f"  URL {full_url} redirected to a main category page. Skipping.")
+            stats.skipped += 1
+            return None
+
         soup = BeautifulSoup(response.text, 'html.parser')
 
         date_selector = config.get('date_selector')
+        date_prefix_to_strip = config.get('date_strip_prefix')
         content_selector = config.get('content_selector')
         content_filter_selector = config.get('content_filter_selector')
 
@@ -72,6 +86,10 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
             date_element = soup.select_one(date_selector)
             if date_element:
                 date_text = date_element.get('datetime') or date_element.get_text()
+
+                if date_prefix_to_strip and date_text.startswith(date_prefix_to_strip):
+                    date_text = date_text.replace(date_prefix_to_strip, "").strip()
+
                 try:
                     pub_date = dateparse(date_text)
                 except (ValueError, TypeError):

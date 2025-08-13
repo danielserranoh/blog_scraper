@@ -141,11 +141,17 @@ async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_th
         all_posts.extend(batch)
     if not all_posts:
         return
+    # This ensures the state file is created before any enrichment happens.
+    if all_posts:
+        storage_adapter = get_storage_adapter(app_config)
+        storage_adapter.save(all_posts, name, mode='append')
 
     if len(all_posts) < batch_threshold and not scrape_all:
+        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
+        
         transformed_posts = await transform_posts_live(all_posts, live_model)
         storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(transformed_posts, name, mode='append')
+        storage_adapter.save(transformed_posts, name, mode='overwrite')
     else:
         await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config)
 
@@ -167,7 +173,7 @@ async def check_and_load_results(competitor, app_config, num_posts=0):
 
     for job_info in pending_jobs:
         job_id = job_info['job_id']
-        status = check_gemini_batch_job(job_id)
+        status = check_gemini_batch_job(job_id, verbose=False)
         status_summary[job_id] = status
         total_posts += job_info['num_posts']
         if status != "JOB_STATE_SUCCEEDED":

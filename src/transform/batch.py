@@ -93,7 +93,7 @@ def create_gemini_batch_job(posts, competitor_name, model_name):
         logger.error(f"Error submitting Gemini Batch API job: {e}")
         return None
 
-def check_gemini_batch_job(job_id):
+def check_gemini_batch_job(job_id, verbose=True):
     """
     Checks the status of a Gemini batch job using the SDK.
     """
@@ -104,16 +104,18 @@ def check_gemini_batch_job(job_id):
         'JOB_STATE_EXPIRED',
     }
     client = genai.Client()
-    logger.info(f"Checking status of Gemini batch job: {job_id}")
+    if verbose:
+        logger.info(f"Checking status of Gemini batch job: {job_id}")
     
     try:
         batch_job = client.batches.get(name=job_id)
         job_state = batch_job.state.name
         
-        if job_state in completed_states:
-            logger.info(f"Gemini batch job {job_id} has completed with state: {job_state}")
-        else:
-            logger.info(f"Gemini batch job {job_id} is currently {job_state}.")
+        if verbose: 
+            if job_state in completed_states:
+                logger.info(f"Gemini batch job {job_id} has completed with state: {job_state}")
+            else:
+                logger.info(f"Gemini batch job {job_id} is currently {job_state}.")
             
         return job_state
     except Exception as e:

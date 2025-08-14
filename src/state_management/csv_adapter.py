@@ -36,7 +36,7 @@ class CsvAdapter(BaseAdapter):
         write_header = not os.path.exists(state_filepath)
 
         try:
-            fieldnames = ['competitor', 'title', 'publication_date', 'url', 'summary', 'seo_keywords', 'seo_meta_keywords', 'content']
+            fieldnames = ['title', 'publication_date', 'url', 'summary', 'seo_keywords', 'seo_meta_keywords', 'content']
             with open(state_filepath, file_mode, newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
                 if write_header:

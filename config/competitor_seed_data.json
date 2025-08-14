@@ -109,7 +109,7 @@
       "post_list_selector": "article.listing-item--blog h2 a",
       "date_selector": "time[datetime]",
       "date_strip_prefix": null,
-      "content_selector": "div.wysiwyg",
+      "content_selector": "article.blog--detail",
       "content_filter_selector": null,
       "next_page_selector": "li.pager__item--next a"
     }

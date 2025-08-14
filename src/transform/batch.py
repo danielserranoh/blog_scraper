@@ -72,7 +72,7 @@ def create_gemini_batch_job(posts, competitor_name, model_name):
                 'mime_type': 'application/jsonl'
             }
         )
-        logger.info(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
+        logger.info(f"\t🟢 Successfully uploaded batch file with ID: {uploaded_file.name}")
         
         logger.info("Creating the batch job.")
         batch_job = client.batches.create(
@@ -84,7 +84,7 @@ def create_gemini_batch_job(posts, competitor_name, model_name):
         )
         
         job_id = batch_job.name
-        logger.info(f"Successfully submitted Gemini batch job with ID: {job_id}")
+        logger.info(f"\t🟢 Successfully submitted Gemini batch job with ID: {job_id}")
         
         os.remove(batch_file_path)
         
@@ -113,7 +113,7 @@ def check_gemini_batch_job(job_id, verbose=True):
         
         if verbose: 
             if job_state in completed_states:
-                logger.info(f"Gemini batch job {job_id} has completed with state: {job_state}")
+                logger.info(f"\t🟢 Gemini batch job {job_id} has completed with state: {job_state}")
             else:
                 logger.info(f"Gemini batch job {job_id} is currently {job_state}.")
             
@@ -142,7 +142,7 @@ def download_gemini_batch_results(job_id, original_posts=None):
             return original_posts or []
 
         result_file_name = batch_job.dest.file_name
-        logger.info(f"Found result file: {result_file_name}. Downloading...")
+        logger.info(f"\t🟢 Found result file: {result_file_name}. Downloading...")
         file_content_bytes = client.files.download(file=result_file_name)
         result_content = file_content_bytes.decode('utf-8')
 

@@ -44,6 +44,90 @@ def _get_existing_urls(competitor_name):
 
     return existing_urls
 
+def _validate_post_url(response, original_url, config, stats):
+    """
+    Checks if a post URL was redirected to a main category page.
+    Returns True if the URL is valid, False if it was redirected.
+    """
+    final_url = str(response.url)
+    base_url = config.get('base_url', '')
+    
+    # Create a set of the full, absolute URLs for the main category pages
+    main_category_urls = {urljoin(base_url, path) for path in config.get('category_paths', [])}
+
+    # Check if the final URL is one of these main pages
+    if final_url != original_url and final_url in main_category_urls:
+        logger.warning(f"  URL {original_url} redirected to a main category page. Skipping.")
+        stats.skipped += 1
+        return False
+    return True
+
+def _extract_post_publication_date(soup, config, url):
+    """
+    Extracts and parses the publication date from a post's page.
+    """
+    date_selector = config.get('date_selector')
+    date_prefix_to_strip = config.get('date_strip_prefix')
+    
+    if not date_selector:
+        return None
+
+    date_element = soup.select_one(date_selector)
+    if not date_element:
+        return None
+
+    date_text = date_element.get('datetime') or date_element.get_text()
+    
+    if date_prefix_to_strip and date_text.startswith(date_prefix_to_strip):
+        date_text = date_text.replace(date_prefix_to_strip, "").strip()
+
+    try:
+        return dateparse(date_text)
+    except (ValueError, TypeError):
+        logger.warning(f"Could not parse date: '{date_text}' from {url}")
+        return None
+    
+def _extract_post_title(soup, config):
+    """
+    Extracts the title from a post's page using a specific selector
+    from the config, with a fallback to generic selectors.
+    """
+    title_selector = config.get('title_selector')
+    
+    if title_selector:
+        title_element = soup.select_one(title_selector)
+        if title_element:
+            return title_element.text.strip()
+    
+    # Fallback for when no specific selector is provided
+    title_element = soup.find('h1') or soup.find('h2')
+    if title_element:
+        return title_element.text.strip()
+        
+    return 'No Title Found'
+    
+def _extract_post_content(soup, config):
+    """
+    Extracts and cleans the main blog post content from a page.
+    """
+    content_selector = config.get('content_selector')
+    content_filter_selector = config.get('content_filter_selector')
+    
+    if not content_selector:
+        return ""
+
+    content_container = soup.select_one(content_selector)
+    if not content_container:
+        return ""
+
+    if content_filter_selector:
+        element_to_remove = content_container.select_one(content_filter_selector)
+        if element_to_remove:
+            element_to_remove.decompose()
+            
+    return ' '.join(content_container.get_text(separator=' ', strip=True).split())
+
+
 async def _get_post_details(client, base_url, post_url_path, config, stats): 
     """
     Scrapes an individual blog post page using selectors from the config.
@@ -56,56 +140,16 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
         response.raise_for_status()
 
         # --- NEW: Check if we were redirected back to a main page ---
-        final_url = str(response.url)
-        
-        # Create a set of the full, absolute URLs for the main category pages
-        main_category_urls = {urljoin(base_url, path) for path in config['category_paths']}
-
-        # Check if the final URL is one of these main pages
-        if final_url != full_url and final_url in main_category_urls:
-            logger.warning(f"  URL {full_url} redirected to a main category page. Skipping.")
-            stats.skipped += 1
+        if not _validate_post_url(response, full_url, config, stats):
             return None
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        date_selector = config.get('date_selector')
-        date_prefix_to_strip = config.get('date_strip_prefix')
-        content_selector = config.get('content_selector')
-        content_filter_selector = config.get('content_filter_selector')
-
-        title_element = soup.find('h1') or soup.find('h2')
-        title = title_element.text.strip() if title_element else 'No Title Found'
-        
-        # --- FIX: Re-introduced Meta Keyword Extraction ---
+        pub_date = _extract_post_publication_date(soup, config, full_url)
+        title = _extract_post_title(soup, config)
+        content_text = _extract_post_content(soup, config)
         keywords_meta = soup.find('meta', {'name': 'keywords'})
-        seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'
-
-        pub_date = None
-        if date_selector:
-            date_element = soup.select_one(date_selector)
-            if date_element:
-                date_text = date_element.get('datetime') or date_element.get_text()
-
-                if date_prefix_to_strip and date_text.startswith(date_prefix_to_strip):
-                    date_text = date_text.replace(date_prefix_to_strip, "").strip()
-
-                try:
-                    pub_date = dateparse(date_text)
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not parse date: '{date_text}' from {full_url}")
-        
-        content_text = ""
-        if content_selector:
-            content_container = soup.select_one(content_selector)
-            if content_container:
-                # --- FIX: Apply the content filter if it's defined in the config ---
-                if content_filter_selector:
-                    element_to_remove = content_container.select_one(content_filter_selector)
-                    if element_to_remove:
-                        element_to_remove.decompose() # Remove the element from the parse tree
-                
-                content_text = ' '.join(content_container.get_text(separator=' ', strip=True).split())
+        seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'       
 
         return {
             'title': title,

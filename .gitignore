@@ -22,6 +22,8 @@ token.json
 # Other project-specific files to ignore
 *.pyc
 *.log
+error_log.txt
 
+# OS files
 .DS_Store
 .ds_store

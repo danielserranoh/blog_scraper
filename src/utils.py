@@ -60,3 +60,34 @@ def get_batch_status_report(statuses):
     pending_count = total_jobs - succeeded_count
     summary = f"{succeeded_count}/{total_jobs} jobs have succeeded. Still waiting for {pending_count} job(s) to complete."
     return False, summary
+
+
+def get_performance_estimate():
+    """Reads the performance log and returns the average seconds per post."""
+    try:
+        with open('config/performance_log.json', 'r') as f:
+            log = json.load(f)
+        return log.get('average_seconds_per_post', 5.0)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 5.0
+
+def update_performance_log(job_duration_seconds, num_posts):
+    """Updates the performance log with data from a completed job."""
+    try:
+        try:
+            with open('config/performance_log.json', 'r') as f:
+                log = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            log = {"total_posts_processed": 0, "total_time_seconds": 0}
+
+        log['total_posts_processed'] += num_posts
+        log['total_time_seconds'] += job_duration_seconds
+        
+        if log['total_posts_processed'] > 0:
+            log['average_seconds_per_post'] = round(log['total_time_seconds'] / log['total_posts_processed'], 2)
+
+        with open('config/performance_log.json', 'w') as f:
+            json.dump(log, f, indent=4)
+        logger.info("Performance log updated.")
+    except (IOError, TypeError) as e:
+        logger.warning(f"Could not update performance log: {e}")

@@ -103,35 +103,7 @@ def _get_competitors_to_process(competitor_config, selected_competitor_name):
     logger.error(f"Competitor '{selected_competitor_name}' not found.")
     return []
 
-def _get_performance_estimate():
-    """Reads the performance log and returns the average seconds per post."""
-    try:
-        with open('config/performance_log.json', 'r') as f:
-            log = json.load(f)
-        return log.get('average_seconds_per_post', 5.0)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return 5.0
 
-def _update_performance_log(job_duration_seconds, num_posts):
-    """Updates the performance log with data from a completed job."""
-    try:
-        try:
-            with open('config/performance_log.json', 'r') as f:
-                log = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            log = {"total_posts_processed": 0, "total_time_seconds": 0}
-
-        log['total_posts_processed'] += num_posts
-        log['total_time_seconds'] += job_duration_seconds
-        
-        if log['total_posts_processed'] > 0:
-            log['average_seconds_per_post'] = round(log['total_time_seconds'] / log['total_posts_processed'], 2)
-
-        with open('config/performance_log.json', 'w') as f:
-            json.dump(log, f, indent=4)
-        logger.info("Performance log updated.")
-    except (IOError, TypeError) as e:
-        logger.warning(f"Could not update performance log: {e}")
 
 # --- Main Workflow Functions ---
 
@@ -224,7 +196,7 @@ async def check_and_load_results(competitor, app_config, num_posts=0):
             os.remove(raw_posts_file_path)
 
     job_duration = time.time() - start_time
-    _update_performance_log(job_duration, total_posts)
+    _utils.utils.update_performance_log(job_duration, total_posts)
 
     if all_transformed_posts:
         storage_adapter = get_storage_adapter(app_config)
@@ -322,7 +294,7 @@ def run_export_process(competitors_to_export, export_format, app_config):
 
 async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     """Asks the user if they want to wait for a submitted batch job."""
-    avg_speed = _get_performance_estimate()
+    avg_speed = utils.get_performance_estimate()
     if avg_speed > 0:
         estimated_seconds = avg_speed * num_posts
         estimated_minutes = estimated_seconds / 60

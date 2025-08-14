@@ -14,6 +14,8 @@ from .extract import extract_posts_in_batches
 from .transform import create_gemini_batch_job, check_gemini_batch_job, download_gemini_batch_results, transform_posts_live
 from .state_management import get_storage_adapter
 from .load import exporters
+from .load.file_saver import save_export_file
+from . import utils
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +171,7 @@ async def check_and_load_results(competitor, app_config, num_posts=0):
     
     all_succeeded = True
     total_posts = 0
+    """
     status_summary = {}
 
     for job_info in pending_jobs:
@@ -182,6 +185,18 @@ async def check_and_load_results(competitor, app_config, num_posts=0):
     # Print summary
     for job_id, status in status_summary.items():
         logger.info(f"  - Job {job_id}: {status}")
+    """
+    statuses = []
+    total_posts = 0
+    for job_info in pending_jobs:
+        job_id = job_info['job_id']
+        status = check_gemini_batch_job(job_id, verbose=False)
+        statuses.append(status)
+        total_posts += job_info.get('num_posts', 0)
+    
+    # --- REFACTORED: Use the new summary helper ---
+    summary_message, all_succeeded = utils.get_job_status_summary(statuses)
+    logger.info(summary_message) # Print the clear, user-friendly summary
 
     if not all_succeeded:
         logger.info("--- Not all jobs have succeeded. Please check again later. ---")
@@ -267,7 +282,10 @@ def run_export_process(competitors_to_export, export_format, app_config):
     
     for competitor in competitors_to_export:
         competitor_name = competitor['name']
+
         state_folder = os.path.join("state", competitor_name)
+        state_filepath = os.path.join(state_folder, f"{competitor_name}_state.csv")
+
         if not os.path.isdir(state_folder):
             logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
             continue
@@ -277,10 +295,9 @@ def run_export_process(competitors_to_export, export_format, app_config):
             logger.warning(f"No CSV file found for '{competitor_name}'. Skipping.")
             continue
             
-        latest_csv_path = os.path.join(state_folder, max(csv_files))
-        logger.info(f"Reading latest data for '{competitor_name}' from: {os.path.basename(latest_csv_path)}")
+        logger.info(f"Reading latest data for '{competitor_name}' from: {os.path.basename(state_filepath)}")
         
-        with open(latest_csv_path, mode='r', newline='', encoding='utf-8') as f:
+        with open(state_filepath,  mode='r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for post in reader:
                 post['competitor'] = competitor_name
@@ -297,24 +314,11 @@ def run_export_process(competitors_to_export, export_format, app_config):
         return
     # For gsheets, the returned data is a success message, not file content
     if export_format == 'gsheets':
-        logger.info(formatted_data) # Just log the message
+        # For Google Sheets, the return value is a status message, so we just log it.
+        logger.info(formatted_data)
     else:
-        # Save the new file
-        try:
-            if len(competitors_to_export) > 1:
-                base_filename = f"all_competitors-{datetime.now().strftime('%y%m%d')}"
-            else:
-                base_filename = f"{competitors_to_export[0]['name']}-{datetime.now().strftime('%y%m%d')}"
-            
-            export_dir = "exports"
-            os.makedirs(export_dir, exist_ok=True)
-            output_filepath = os.path.join(export_dir, f"{base_filename}.{export_format}")
-
-            with open(output_filepath, "w", encoding="utf-8") as f:
-                f.write(formatted_data)
-            logger.info(f"Successfully exported {len(all_posts_to_export)} total posts to: {output_filepath}")
-        except IOError as e:
-            logger.error(f"Failed to write export file: {e}")
+        # For all other formats, call our new dedicated saver function.
+        save_export_file(formatted_data, export_format, competitors_to_export)
 
 async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     """Asks the user if they want to wait for a submitted batch job."""

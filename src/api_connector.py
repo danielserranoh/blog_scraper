@@ -5,6 +5,7 @@ import logging
 import json
 import re
 import asyncio
+import os
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -36,8 +37,9 @@ class GeminiAPIConnector:
         
         for i in range(3): # Retry logic
             try:
+                # --- FIX: The model name should NOT have the 'models/' prefix ---
                 response = await self.client.aio.models.generate_content(
-                    model=f"models/{model_name}",
+                    model=model_name,
                     contents=prompt,
                     generation_config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
@@ -53,19 +55,24 @@ class GeminiAPIConnector:
         return summary, seo_keywords
 
     def create_batch_job(self, posts, competitor_name, model_name, temp_file_path):
-        """Creates and submits a new batch job."""
+        """Creates and submits a new batch job from a pre-existing temp file."""
         if not self.client:
             return None
+        
+        print(temp_file_path)
         try:
-            logger.info(f"Uploading {len(posts)} posts in '{os.path.basename(temp_file_path)}' for batch processing.")
+            logger.info(f"Uploading file '{os.path.basename(temp_file_path)}' for batch processing.")
+            
             uploaded_file = self.client.files.upload(
                 file=temp_file_path,
-                mime_type="application/jsonl"
+                config=types.UploadFileConfig(mime_type="application/jsonl")
             )
+            
             logger.info(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
             
+            # The model name for batch jobs also does not need the prefix
             batch_job = self.client.batches.create(
-                model=f"models/{model_name}",
+                model=model_name,
                 src=uploaded_file.name,
             )
             logger.info(f"Successfully submitted Gemini batch job with ID: {batch_job.name}")
@@ -89,8 +96,7 @@ class GeminiAPIConnector:
 
     def download_batch_results(self, job_id, original_posts=None):
         """
-        Downloads and processes batch job results. If original_posts is provided,
-        it merges the results. If not, it reconstructs posts from the result metadata.
+        Downloads and processes batch job results.
         """
         if not self.client:
             return original_posts or []

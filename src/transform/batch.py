@@ -12,47 +12,54 @@ logger = logging.getLogger(__name__)
 
 def _create_jsonl_from_posts(posts):
     """
-    Creates a JSONL formatted string from a list of post dictionaries.
-    It filters out posts that do not have content.
+    Creates a JSONL formatted string from a list of post dictionaries,
+    adhering to the correct Gemini API schema.
     """
     jsonl_lines = []
     for i, post in enumerate(posts):
-        # This check is crucial: only include posts that have content.
-        if post.get('content') and post['content'] != 'N/A':
+        if post.get('content') and post.get('content') != 'N/A':
             prompt = f"Given the following blog post content, please provide a summary (no more than 350 characters) and a list of the 5 most important SEO keywords, ordered by importance. Return a JSON object with 'summary' and 'seo_keywords' keys.\n\nContent: {post['content']}"
             
-            # This metadata is included in the request and returned in the result,
-            # allowing us to reconstruct the post if the temp file is lost.
-            metadata = {
-                "url": post.get("url"),
-                "title": post.get("title"),
-                "publication_date": post.get("publication_date"),
-                "seo_meta_keywords": post.get("seo_meta_keywords")
-            }
-            
+            # The contents and generationConfig must be nested inside a 'request' object.
             request_payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"response_mime_type": "application/json"},
-                "metadata": metadata
+                "generationConfig": {"response_mime_type": "application/json"}
             }
 
+            # The final line in the JSONL must have a 'key' and a 'request' object.
             json_line = {"key": f"post-{i}", "request": request_payload}
             jsonl_lines.append(json.dumps(json_line))
             
     return "\n".join(jsonl_lines)
 
-def create_gemini_batch_job(posts, competitor_name, model_name, temp_file_path):
+def create_gemini_batch_job(posts, competitor_name, model_name):
     """
-    Calls the connector to submit the batch job using the provided file path.
-    This function no longer creates or deletes the temp file.
+    Creates a temporary, correctly formatted JSONL file and calls the
+    connector to submit the batch job.
     """
-    if not os.path.exists(temp_file_path):
-        logger.error(f"Cannot create batch job, temp file not found at: {temp_file_path}")
+    # 1. Prepare the API-compliant JSONL data.
+    jsonl_data = _create_jsonl_from_posts(posts)
+    if not jsonl_data:
+        logger.warning("No posts with content to submit to Gemini API. Skipping batch job creation.")
         return None
 
-    connector = GeminiAPIConnector()
-    # Pass the existing file path directly to the connector
-    job_id = connector.create_batch_job(posts, competitor_name, model_name, temp_file_path)
+    # 2. Create a new, temporary file specifically for this API request.
+    workspace_folder = os.path.join('workspace', competitor_name)
+    os.makedirs(workspace_folder, exist_ok=True)
+    # This file is different from the 'unsubmitted_posts' file.
+    temp_api_file_path = os.path.join(workspace_folder, "temp_api_requests.jsonl")
+    
+    try:
+        with open(temp_api_file_path, "w", encoding="utf-8") as f:
+            f.write(jsonl_data)
+
+        # 3. Call the connector with the path to the correctly formatted file.
+        connector = GeminiAPIConnector()
+        return connector.create_batch_job(posts, competitor_name, model_name, temp_api_file_path)
+    finally:
+        # 4. Ensure the temporary API file is always cleaned up.
+        if os.path.exists(temp_api_file_path):
+            os.remove(temp_api_file_path)
     return job_id
 
 def check_gemini_batch_job(job_id, verbose=True):

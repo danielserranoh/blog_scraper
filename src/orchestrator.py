@@ -93,9 +93,11 @@ def _split_posts_into_chunks(posts, max_size_mb=95):
     return chunks
 
 async def _submit_chunks_for_processing(competitor, posts, batch_model, app_config):
-    """Helper to chunk posts, submit jobs, and prompt the user."""
+    """
+    Chunks posts, submits them as jobs, and renames files transactionally.
+    It will also process any previously unsubmitted files.
+    """
     competitor_name = competitor['name']
-
     workspace_folder = os.path.join('workspace', competitor_name)
     
     # --- NEW: Discover and process previously unsubmitted files ---
@@ -104,23 +106,27 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
         logger.info(f"Found {len(unsubmitted_files)} previously unsubmitted job file(s). Attempting to process them now.")
         # In a more advanced version, we would add these to the main loop.
         # For now, we'll focus on the main logic.
-
+    
     post_chunks = _split_posts_into_chunks(posts)
 
     if len(post_chunks) > 1:
-        logger.info(f"Job for '{competitor_name}' is too large and has been split into {len(post_chunks)} chunks.")
+        logger.info(f"Job for '{competitor_name}' is large and has been split into {len(post_chunks)} chunks.")
 
     job_tracking_list = []
     for i, chunk in enumerate(post_chunks):
-        logger.info(f"Submitting chunk {i+1}/{len(post_chunks)} with {len(chunk)} posts...")
-        raw_posts_path = _save_raw_posts(chunk, competitor_name, chunk_num=i+1)
-        if not raw_posts_path: continue
+        logger.info(f"Preparing chunk {i+1}/{len(post_chunks)}...")
+        unsubmitted_path = _save_raw_posts(chunk, competitor_name, chunk_num=i+1)
+        if not unsubmitted_path: continue
 
+        logger.info(f"Submitting chunk {i+1}/{len(post_chunks)}...")
         job_id = create_gemini_batch_job(chunk, competitor_name, batch_model)
+        
         if job_id:
+            # --- NEW: Transactional Rename ---
+            # The job was submitted successfully, so we rename the file to mark it as "pending".
             submitted_path = os.path.join(workspace_folder, f"temp_posts_chunk_{i+1}.jsonl")
             os.rename(unsubmitted_path, submitted_path)
-
+            
             job_tracking_list.append({
                 "job_id": job_id,
                 "raw_posts_file": os.path.basename(submitted_path),
@@ -128,8 +134,8 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
             })
         else:
             logger.error(f"Failed to submit chunk {i+1}. The unsubmitted file has been left in the workspace for the next run.")
-            
-    
+            # We DO NOT delete the unsubmitted_path file on failure.
+
     if job_tracking_list:
         _save_pending_jobs(competitor_name, job_tracking_list)
         await _prompt_to_wait_for_job(competitor, len(posts), app_config)
@@ -158,13 +164,13 @@ async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     try:
         choice = input("? Do you want to start polling for the results now? (y/n): ").lower()
         if choice == 'y':
-            await check_and_load_results(competitor, app_config, num_posts)
+            await check_and_load_results(competitor, app_config)
         else:
             logger.info("Exiting. You can check the job status later with the --check-job flag.")
     except (KeyboardInterrupt, EOFError):
         logger.info("\nExiting.")
 
-async def _poll_job_statuses(pending_jobs):
+def _poll_job_statuses(pending_jobs):
     """Polls the API for the status of each job in the list."""
     statuses = []
     for job_info in pending_jobs:

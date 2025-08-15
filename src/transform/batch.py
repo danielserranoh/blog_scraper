@@ -41,23 +41,18 @@ def _create_jsonl_from_posts(posts):
             
     return "\n".join(jsonl_lines)
 
-def create_gemini_batch_job(posts, competitor_name, model_name):
+def create_gemini_batch_job(posts, competitor_name, model_name, temp_file_path):
     """
-    Creates a temporary JSONL file and calls the connector to submit the batch job.
+    Calls the connector to submit the batch job using the provided file path.
+    This function no longer creates or deletes the temp file.
     """
-    jsonl_data = _create_jsonl_from_posts(posts)
-    if not jsonl_data:
-        logger.warning("No posts with content to submit to Gemini API. Skipping batch job creation.")
+    if not os.path.exists(temp_file_path):
+        logger.error(f"Cannot create batch job, temp file not found at: {temp_file_path}")
         return None
 
-    temp_file_path = os.path.join("workspace", competitor_name, "temp_batch_requests.jsonl")
-    with open(temp_file_path, "w", encoding="utf-8") as f:
-        f.write(jsonl_data)
-
     connector = GeminiAPIConnector()
+    # Pass the existing file path directly to the connector
     job_id = connector.create_batch_job(posts, competitor_name, model_name, temp_file_path)
-    
-    os.remove(temp_file_path) # Clean up the temp file
     return job_id
 
 def check_gemini_batch_job(job_id, verbose=True):

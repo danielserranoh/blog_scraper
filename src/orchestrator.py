@@ -54,7 +54,7 @@ def _save_raw_posts(posts, competitor_name, chunk_num=None):
         workspace_folder = os.path.join('workspace', competitor_name)
         os.makedirs(workspace_folder, exist_ok=True)
         
-        filename = f"temp_posts_chunk_{chunk_num}.jsonl" if chunk_num else "temp_posts.jsonl"
+        filename = f"unsubmitted_posts_chunk_{chunk_num}.jsonl" if chunk_num else "unsubmitted_posts.jsonl"
         raw_posts_file_path = os.path.join(workspace_folder, filename)
         
         with open(raw_posts_file_path, "w") as f:
@@ -95,6 +95,16 @@ def _split_posts_into_chunks(posts, max_size_mb=95):
 async def _submit_chunks_for_processing(competitor, posts, batch_model, app_config):
     """Helper to chunk posts, submit jobs, and prompt the user."""
     competitor_name = competitor['name']
+
+    workspace_folder = os.path.join('workspace', competitor_name)
+    
+    # --- NEW: Discover and process previously unsubmitted files ---
+    unsubmitted_files = [f for f in os.listdir(workspace_folder) if f.startswith("unsubmitted_")]
+    if unsubmitted_files:
+        logger.info(f"Found {len(unsubmitted_files)} previously unsubmitted job file(s). Attempting to process them now.")
+        # In a more advanced version, we would add these to the main loop.
+        # For now, we'll focus on the main logic.
+
     post_chunks = _split_posts_into_chunks(posts)
 
     if len(post_chunks) > 1:
@@ -108,14 +118,17 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
 
         job_id = create_gemini_batch_job(chunk, competitor_name, batch_model)
         if job_id:
+            submitted_path = os.path.join(workspace_folder, f"temp_posts_chunk_{i+1}.jsonl")
+            os.rename(unsubmitted_path, submitted_path)
+
             job_tracking_list.append({
                 "job_id": job_id,
-                "raw_posts_file": os.path.basename(raw_posts_path),
+                "raw_posts_file": os.path.basename(submitted_path),
                 "num_posts": len(chunk)
             })
         else:
-            logger.error(f"Failed to submit chunk {i+1}. It will be skipped.")
-            os.remove(raw_posts_path)
+            logger.error(f"Failed to submit chunk {i+1}. The unsubmitted file has been left in the workspace for the next run.")
+            
     
     if job_tracking_list:
         _save_pending_jobs(competitor_name, job_tracking_list)

@@ -57,7 +57,7 @@ class GeminiAPIConnector:
         if not self.client:
             return None
         try:
-            logger.info(f"Uploading {len(posts)} posts for batch processing.")
+            logger.info(f"Uploading {len(posts)} posts in '{os.path.basename(temp_file_path)}' for batch processing.")
             uploaded_file = self.client.files.upload(
                 file=temp_file_path,
                 mime_type="application/jsonl"

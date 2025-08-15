@@ -4,9 +4,11 @@ rootdir: /Users/danielserrano/Tools/blog_scraper
 configfile: pyproject.toml
 plugins: respx-0.22.0, asyncio-1.1.0, anyio-4.10.0, mock-3.14.1
 asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 7 items
+collected 11 items
 
-tests/test_transform_batch.py .....                                      [ 71%]
+tests/test_extraction.py .                                               [  9%]
+tests/test_orchestrator.py ...                                           [ 36%]
+tests/test_transform_batch.py .....                                      [ 81%]
 tests/test_transform_live.py ..                                          [100%]
 
-============================== 7 passed in 1.36s ===============================
+============================== 11 passed in 2.23s ==============================

@@ -99,9 +99,12 @@ def test_download_gemini_batch_results_success(mocker, mock_posts):
     response1_data = json.dumps({"summary": "Perfect summary.", "seo_keywords": ["k1", "k2"]})
     
     mock_job = MagicMock(name='BatchJob')
+    
+    # --- FIX: Correctly mock the nested state.name attribute ---
     mock_state = MagicMock(name='JobState')
     mock_state.name = 'JOB_STATE_SUCCEEDED'
     type(mock_job).state = PropertyMock(return_value=mock_state)
+    
     type(mock_job).dest = PropertyMock(return_value=MagicMock(file_name="results.jsonl"))
 
     mock_batches_service = MagicMock()
@@ -112,15 +115,13 @@ def test_download_gemini_batch_results_success(mocker, mock_posts):
 
     mocker.patch.object(batch.genai, 'Client', return_value=mock_client)
     
-    # --- FIX: Define result_json BEFORE using it ---
     result_json = {
         "key": "post-0",
         "response": { "candidates": [{"content": {"parts": [{"text": response1_data}]}}]}
     }
-    # Now that it's defined, we can set the return value for the mock.
     mock_files_service.download.return_value = json.dumps(result_json).encode('utf-8')
 
-    transformed_posts = batch.download_gemini_batch_results("batches/mock-job-id", [mock_posts[0]])
+    transformed_posts = batch.download_gemini_batch_results("batches/job-123", [mock_posts[0]])
     
     assert transformed_posts[0]['summary'] == "Perfect summary."
     assert transformed_posts[0]['seo_keywords'] == "k1, k2"

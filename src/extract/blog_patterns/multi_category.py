@@ -2,6 +2,7 @@
 import logging
 import httpx
 import asyncio
+import random
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from .._common import _get_existing_urls, _get_post_details, get_next_page_url, ScrapeStats
@@ -16,6 +17,7 @@ async def scrape(config, days, scrape_all, batch_size, stats):
     processed_in_run_urls = set()
     
     pagination_config = config.get('pagination_pattern')
+    semaphore = asyncio.Semaphore(5) # Allow up to 5 concurrent detail scrapes
 
     async with httpx.AsyncClient() as client:
         # Loop through each category path provided in the config
@@ -37,9 +39,16 @@ async def scrape(config, days, scrape_all, batch_size, stats):
                             post_url = urljoin(base_url, link['href'])
                             if post_url in existing_urls or post_url in processed_in_run_urls:
                                 if post_url not in processed_in_run_urls: stats.skipped += 1
+                                logger.debug(f"  Skipping duplicate post: {post_url}")
                                 continue
                             processed_in_run_urls.add(post_url)
-                            tasks.append(_get_post_details(client, base_url, link['href'], config, stats))
+                            
+                            async def fetch_with_semaphore(post_link):
+                                async with semaphore:
+                                    await asyncio.sleep(random.uniform(0.5, 1.5))
+                                    return await _get_post_details(client, base_url, post_link['href'], config, stats)
+
+                            tasks.append(fetch_with_semaphore(link))
 
                     if tasks:
                         post_details_list = await asyncio.gather(*tasks)

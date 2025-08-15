@@ -4,13 +4,14 @@ venv/
 __pycache__/
 
 # Output files from the scraper
-state/
+
 workspace/
 exports/
-
+data/
 
 scraped/
 old/
+state/
 
 # Environment variables file
 .env
@@ -22,6 +23,8 @@ token.json
 # Other project-specific files to ignore
 *.pyc
 *.log
+error_log.txt
 
+# OS files
 .DS_Store
 .ds_store

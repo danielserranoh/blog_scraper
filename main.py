@@ -6,9 +6,11 @@ import logging
 from termcolor import colored
 import asyncio
 from dotenv import load_dotenv
-
+import warnings
 # Import the main orchestrator function
 from src.orchestrator import run_pipeline
+
+warnings.filterwarnings("ignore", message=".* is not a valid JobState.*", category=UserWarning)
 
 # --- Logger Setup ---
 class ColorFormatter(logging.Formatter):

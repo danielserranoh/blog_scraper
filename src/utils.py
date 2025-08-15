@@ -2,6 +2,7 @@
 # This file contains shared helper functions for the application.
 
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,10 @@ def get_performance_estimate():
     try:
         with open('config/performance_log.json', 'r') as f:
             log = json.load(f)
+        # Default to 5s if key is missing or invalid
         return log.get('average_seconds_per_post', 5.0)
     except (FileNotFoundError, json.JSONDecodeError):
+        # Return a default value if the file doesn't exist or is invalid
         return 5.0
 
 def update_performance_log(job_duration_seconds, num_posts):
@@ -78,16 +81,19 @@ def update_performance_log(job_duration_seconds, num_posts):
             with open('config/performance_log.json', 'r') as f:
                 log = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
+            # If log is missing or corrupt, start a new one
             log = {"total_posts_processed": 0, "total_time_seconds": 0}
 
         log['total_posts_processed'] += num_posts
         log['total_time_seconds'] += job_duration_seconds
         
+        # Recalculate the average
         if log['total_posts_processed'] > 0:
             log['average_seconds_per_post'] = round(log['total_time_seconds'] / log['total_posts_processed'], 2)
 
         with open('config/performance_log.json', 'w') as f:
             json.dump(log, f, indent=4)
         logger.info("Performance log updated.")
+
     except (IOError, TypeError) as e:
         logger.warning(f"Could not update performance log: {e}")

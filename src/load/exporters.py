@@ -30,6 +30,7 @@ def _format_as_txt(posts):
         output.append(f"URL: {post.get('url', 'N/A')}")
         output.append(f"Summary: {post.get('summary', 'N/A')}")
         output.append(f"SEO Keywords (LLM): {post.get('seo_keywords', 'N/A')}")
+        output.append(f"Meta Keywords: {post.get('seo_meta_keywords', 'N/A') + ' '}")
         output.append("-" * 40)
     return "\n".join(output)
 
@@ -53,6 +54,7 @@ def _format_as_md(posts):
         output.append("\n> ### Summary")
         output.append(f"> {post.get('summary', 'N/A')}")
         output.append("\n**Keywords**: " + post.get('seo_keywords', 'N/A'))
+        output.append("**Meta Keywords**: " + post.get('seo_meta_keywords', 'N/A') + "  ")
         output.append("\n---")
     return "\n".join(output)
 

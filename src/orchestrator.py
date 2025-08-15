@@ -20,63 +20,6 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
-def _split_posts_into_chunks(posts, max_size_mb=95):
-    """
-    Splits a list of posts into chunks, ensuring the estimated size of each
-    chunk's JSONL file is below the max_size_mb limit.
-    """
-    max_size_bytes = max_size_mb * 1024 * 1024
-    chunks = []
-    current_chunk = []
-    current_size = 0
-
-    for post in posts:
-        post_size = len(json.dumps(post).encode('utf-8')) + 1
-
-        if current_size + post_size > max_size_bytes and current_chunk:
-            chunks.append(current_chunk)
-            current_chunk = [post]
-            current_size = post_size
-        else:
-            current_chunk.append(post)
-            current_size += post_size
-
-    if current_chunk:
-        chunks.append(current_chunk)
-    
-    return chunks
-
-def _save_pending_jobs(competitor_name, job_tracking_list):
-    """Saves a list of pending job details to a JSON file."""
-    try:
-        workspace_folder = os.path.join('workspace', competitor_name)
-        os.makedirs(workspace_folder, exist_ok=True)
-        jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
-        with open(jobs_file_path, "w") as f:
-            json.dump(job_tracking_list, f, indent=4)
-        logger.info(f"Saved {len(job_tracking_list)} pending job(s) to '{jobs_file_path}'")
-    except IOError as e:
-        logger.error(f"Could not save pending jobs file: {e}")
-
-
-def _save_raw_posts(posts, competitor_name, chunk_num=None):
-    """Saves a list of posts to a temporary JSONL file, with chunk number if provided."""
-    try:
-        workspace_folder = os.path.join('workspace', competitor_name)
-        os.makedirs(workspace_folder, exist_ok=True)
-        
-        filename = f"temp_posts_chunk_{chunk_num}.jsonl" if chunk_num else "temp_posts.jsonl"
-        raw_posts_file_path = os.path.join(workspace_folder, filename)
-        
-        with open(raw_posts_file_path, "w") as f:
-            for post in posts:
-                f.write(json.dumps(post) + "\n")
-        logger.info(f"Saved {len(posts)} raw posts to '{os.path.basename(raw_posts_file_path)}' for later processing.")
-        return raw_posts_file_path
-    except IOError as e:
-        logger.error(f"Could not save raw posts to file: {e}")
-        return None
-
 def _load_configuration():
     """Loads and returns the application and competitor configurations."""
     try:
@@ -105,117 +48,49 @@ def _get_competitors_to_process(competitor_config, selected_competitor_name):
 
 
 
-# --- Main Workflow Functions ---
-
-async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
-    """Scrapes the blog, chunks if necessary, and submits jobs."""
-    name = competitor['name']
-    all_posts = []
-    async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
-        all_posts.extend(batch)
-    if not all_posts:
-        return
-    # This ensures the state file is created before any enrichment happens.
-    if all_posts:
-        storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(all_posts, name, mode='append')
-
-    if len(all_posts) < batch_threshold and not scrape_all:
-        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
+def _save_raw_posts(posts, competitor_name, chunk_num=None):
+    """Saves a list of posts to a temporary JSONL file, with chunk number if provided."""
+    try:
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
         
-        transformed_posts = await transform_posts_live(all_posts, live_model)
-        storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(transformed_posts, name, mode='overwrite')
-    else:
-        await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config)
+        filename = f"temp_posts_chunk_{chunk_num}.jsonl" if chunk_num else "temp_posts.jsonl"
+        raw_posts_file_path = os.path.join(workspace_folder, filename)
+        
+        with open(raw_posts_file_path, "w") as f:
+            for post in posts:
+                f.write(json.dumps(post) + "\n")
+        logger.info(f"Saved {len(posts)} raw posts to '{os.path.basename(raw_posts_file_path)}' for later processing.")
+        return raw_posts_file_path
+    except IOError as e:
+        logger.error(f"Could not save raw posts to file: {e}")
+        return None
 
-
-async def check_and_load_results(competitor, app_config, num_posts=0):
-    """Checks all pending jobs for a competitor and loads results when all are complete."""
-    name = competitor['name']
-    workspace_folder = os.path.join('workspace', name)
-    jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
-
-    with open(jobs_file_path, "r") as f:
-        pending_jobs = json.load(f)
-
-    logger.info(f"--- Status for '{name}': Found {len(pending_jobs)} pending job(s) ---")
-    
-    all_succeeded = True
-    total_posts = 0
+def _split_posts_into_chunks(posts, max_size_mb=95):
     """
-    status_summary = {}
-
-    for job_info in pending_jobs:
-        job_id = job_info['job_id']
-        status = check_gemini_batch_job(job_id, verbose=False)
-        status_summary[job_id] = status
-        total_posts += job_info['num_posts']
-        if status != "JOB_STATE_SUCCEEDED":
-            all_succeeded = False
-    
-    # Print summary
-    for job_id, status in status_summary.items():
-        logger.info(f"  - Job {job_id}: {status}")
+    Splits a list of posts into chunks, ensuring the estimated size of each
+    chunk's JSONL file is below the max_size_mb limit.
     """
-    statuses = []
-    total_posts = 0
-    for job_info in pending_jobs:
-        job_id = job_info['job_id']
-        status = check_gemini_batch_job(job_id, verbose=False)
-        statuses.append(status)
-        total_posts += job_info.get('num_posts', 0)
+    max_size_bytes = max_size_mb * 1024 * 1024
+    chunks = []
+    current_chunk = []
+    current_size = 0
+
+    for post in posts:
+        post_size = len(json.dumps(post).encode('utf-8')) + 1
+
+        if current_size + post_size > max_size_bytes and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = [post]
+            current_size = post_size
+        else:
+            current_chunk.append(post)
+            current_size += post_size
+
+    if current_chunk:
+        chunks.append(current_chunk)
     
-    # --- REFACTORED: Use the new summary helper ---
-    summary_message, all_succeeded = utils.get_job_status_summary(statuses)
-    logger.info(summary_message) # Print the clear, user-friendly summary
-
-    if not all_succeeded:
-        logger.info("--- Not all jobs have succeeded. Please check again later. ---")
-        return
-
-    # If all jobs succeeded, process the results
-    logger.info(f"--- All {len(pending_jobs)} jobs for '{name}' succeeded! Consolidating results... ---")
-    all_transformed_posts = []
-    start_time = time.time()
-
-    for job_info in pending_jobs:
-        job_id = job_info['job_id']
-        raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
-        
-        original_posts = None
-        if os.path.exists(raw_posts_file_path):
-            with open(raw_posts_file_path, "r") as f:
-                original_posts = [json.loads(line) for line in f]
-        
-        chunk_results = download_gemini_batch_results(job_id, original_posts)
-        all_transformed_posts.extend(chunk_results)
-        
-        # Clean up individual chunk files as we go
-        if os.path.exists(raw_posts_file_path):
-            os.remove(raw_posts_file_path)
-
-    job_duration = time.time() - start_time
-    _utils.utils.update_performance_log(job_duration, total_posts)
-
-    if all_transformed_posts:
-        storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(all_transformed_posts, name, mode='append')
-    
-    os.remove(jobs_file_path)
-    logger.info(f"Cleaned up all temporary files for '{name}'.")
-
-async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, app_config, all_posts_from_file, posts_to_enrich):
-    """Enriches posts, chunks if necessary, and submits jobs."""
-    if len(posts_to_enrich) < batch_threshold:
-        enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
-        if enriched_posts:
-            enriched_map = {post['url']: post for post in enriched_posts}
-            final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
-            storage_adapter = get_storage_adapter(app_config)
-            storage_adapter.save(final_posts, competitor['name'], mode='overwrite')
-    else:
-        await _submit_chunks_for_processing(competitor, posts_to_enrich, batch_model, app_config)
+    return chunks
 
 async def _submit_chunks_for_processing(competitor, posts, batch_model, app_config):
     """Helper to chunk posts, submit jobs, and prompt the user."""
@@ -246,51 +121,18 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
         _save_pending_jobs(competitor_name, job_tracking_list)
         await _prompt_to_wait_for_job(competitor, len(posts), app_config)
 
-def run_export_process(competitors_to_export, export_format, app_config):
-    """Finds the latest CSV for each competitor and exports the combined data."""
-    logger.info(f"--- Starting export process to {export_format.upper()} ---")
-    
-    all_posts_to_export = []
-    
-    for competitor in competitors_to_export:
-        competitor_name = competitor['name']
 
-        state_folder = os.path.join("state", competitor_name)
-        state_filepath = os.path.join(state_folder, f"{competitor_name}_state.csv")
-
-        if not os.path.isdir(state_folder):
-            logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
-            continue
-
-        csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
-        if not csv_files:
-            logger.warning(f"No CSV file found for '{competitor_name}'. Skipping.")
-            continue
-            
-        logger.info(f"Reading latest data for '{competitor_name}' from: {os.path.basename(state_filepath)}")
-        
-        with open(state_filepath,  mode='r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for post in reader:
-                post['competitor'] = competitor_name
-                all_posts_to_export.append(post)
-
-    if not all_posts_to_export:
-        logger.warning("No data found to export.")
-        return
-
+def _save_pending_jobs(competitor_name, job_tracking_list):
+    """Saves a list of pending job details to a JSON file."""
     try:
-        formatted_data = exporters.export_data(all_posts_to_export, export_format, app_config)
-    except ValueError as e:
-        logger.error(e)
-        return
-    # For gsheets, the returned data is a success message, not file content
-    if export_format == 'gsheets':
-        # For Google Sheets, the return value is a status message, so we just log it.
-        logger.info(formatted_data)
-    else:
-        # For all other formats, call our new dedicated saver function.
-        save_export_file(formatted_data, export_format, competitors_to_export)
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
+        jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
+        with open(jobs_file_path, "w") as f:
+            json.dump(job_tracking_list, f, indent=4)
+        logger.info(f"Saved {len(job_tracking_list)} pending job(s) to '{jobs_file_path}'")
+    except IOError as e:
+        logger.error(f"Could not save pending jobs file: {e}")
 
 async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     """Asks the user if they want to wait for a submitted batch job."""
@@ -309,6 +151,14 @@ async def _prompt_to_wait_for_job(competitor, num_posts, app_config):
     except (KeyboardInterrupt, EOFError):
         logger.info("\nExiting.")
 
+async def _poll_job_statuses(pending_jobs):
+    """Polls the API for the status of each job in the list."""
+    statuses = []
+    for job_info in pending_jobs:
+        status = check_gemini_batch_job(job_info['job_id'], verbose=False)
+        statuses.append(status)
+    return statuses
+
 async def _run_job_check_phase(competitors_to_process, app_config):
     """Discovers, summarizes, and executes checks for any pending batch jobs."""
     logger.info("--- Checking for any pending batch jobs... ---")
@@ -319,12 +169,190 @@ async def _run_job_check_phase(competitors_to_process, app_config):
         if os.path.exists(jobs_file_path):
             all_jobs_to_check.append(competitor)
         else:
-            logger.info(f"No pending jobs found for: {competitor['name']}")
+            logger.info(f" 👀 {competitor['name']} has no pending jobs")
     
     if all_jobs_to_check:
-        logger.info(f"Found pending jobs for: {', '.join([c['name'] for c in all_jobs_to_check])}. Processing them now.")
+        logger.info(f" ⚙️ {', '.join([c['name'] for c in all_jobs_to_check])} have pending jobs. Processing them now.")
         for competitor in all_jobs_to_check:
             await check_and_load_results(competitor, app_config)
+
+
+def _cleanup_workspace(competitor, pending_jobs):
+    """Deletes all temporary files after processing is complete."""
+    name = competitor['name']
+    workspace_folder = os.path.join('workspace', name)
+    jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
+
+    for job_info in pending_jobs:
+        raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
+        if os.path.exists(raw_posts_file_path):
+            os.remove(raw_posts_file_path)
+    
+    os.remove(jobs_file_path)
+    logger.info(f"Cleaned up all temporary files for '{name}'.")
+
+# --- Main Workflow Functions ---
+
+async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
+    """Scrapes the blog, chunks if necessary, and submits jobs."""
+    name = competitor['name']
+    all_posts = []
+    async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
+        all_posts.extend(batch)
+    if not all_posts:
+        return
+    # This ensures the state file is created before any enrichment happens.
+    if all_posts:
+        storage_adapter = get_storage_adapter(app_config)
+        storage_adapter.save(all_posts, name, mode='append')
+
+    if len(all_posts) < batch_threshold:
+        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
+        
+        transformed_posts = await transform_posts_live(all_posts, live_model)
+        storage_adapter = get_storage_adapter(app_config)
+        storage_adapter.save(transformed_posts, name, mode='overwrite')
+    else:
+        await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config)
+
+async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, app_config, all_posts_from_file, posts_to_enrich):
+    """Enriches posts, chunks if necessary, and submits jobs."""
+    if len(posts_to_enrich) < batch_threshold:
+        enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
+        if enriched_posts:
+            enriched_map = {post['url']: post for post in enriched_posts}
+            final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
+            storage_adapter = get_storage_adapter(app_config)
+            storage_adapter.save(final_posts, competitor['name'], mode='overwrite')
+    else:
+        await _submit_chunks_for_processing(competitor, posts_to_enrich, batch_model, app_config)
+
+
+
+async def check_and_load_results(competitor, app_config):
+    """
+    Orchestrates the checking of jobs and the loading of results.
+    This function acts as the "Manager".
+    """
+    name = competitor['name']
+    workspace_folder = os.path.join('workspace', name)
+    jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
+
+    with open(jobs_file_path, "r") as f:
+        pending_jobs = json.load(f)
+
+    # 1. Delegate polling to a specialized "worker"
+    statuses = _poll_job_statuses(pending_jobs)
+    
+    # 2. Get the summary from our message manager
+    summary_message, all_succeeded = utils.get_job_status_summary(statuses)
+    
+    logger.info(f"--- Status for '{name}': {len(pending_jobs)} job(s) ---")
+    logger.info(summary_message)
+
+    if all_succeeded:
+        try:
+            # 3. If successful, consolidate and save the results first.
+            logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
+            _consolidate_and_save_results(competitor, pending_jobs, app_config)
+            
+            # 4. Only after a successful save, clean up the workspace.
+            _cleanup_workspace(competitor, pending_jobs)
+
+        except Exception as e:
+            logger.error(f"A critical error occurred during result processing for '{name}': {e}")
+            logger.error("Temporary workspace files have been preserved for manual inspection.")
+    else:
+        logger.info("--- Not all jobs have finished processing. Please check again later. ---")
+
+
+
+def run_export_process(competitors_to_export, export_format, app_config):
+    """Finds the latest CSV for each competitor and exports the combined data."""
+    logger.info(f"--- Starting export process to {export_format.upper()} ---")
+    all_posts_to_export = []
+    
+    for competitor in competitors_to_export:
+        competitor_name = competitor['name']
+        
+        state_folder = os.path.join("state", competitor_name)
+        state_filepath = os.path.join(state_folder, f"{competitor_name}_state.csv")
+
+        if not os.path.isdir(state_folder):
+            logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
+            continue
+        
+        csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
+        if not csv_files:
+            logger.warning(f"‼️ No state file found for '{competitor_name}'. Skipping.")
+            print(f" 💡 Try running a new scrape for '{competitor_name}'.")
+            continue
+            
+        logger.info(f" Reading latest data for '{competitor_name}' from: {os.path.basename(state_filepath)}")
+        
+        with open(state_filepath,  mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for post in reader:
+                post['competitor'] = competitor_name
+                all_posts_to_export.append(post)
+
+    if not all_posts_to_export:
+        logger.warning("‼️ No data found to export.")
+        return
+
+    try:
+        formatted_data = exporters.export_data(all_posts_to_export, export_format, app_config)
+    except ValueError as e:
+        logger.error(e)
+        return
+    # For gsheets, the returned data is a success message, not file content
+    if export_format == 'gsheets':
+        # For Google Sheets, the return value is a status message, so we just log it.
+        logger.info(formatted_data)
+    else:
+        # For all other formats, call our new dedicated saver function.
+        save_export_file(formatted_data, export_format, competitors_to_export)
+
+
+async def _consolidate_and_save_results(competitor, pending_jobs, app_config):
+    """Downloads results for all successful jobs, consolidates them, and updates the state file."""
+    name = competitor['name']
+    workspace_folder = os.path.join('workspace', name)
+    state_filepath = os.path.join('state', name, f"{name}_state.csv")
+    
+    all_enriched_posts = []
+    total_posts = sum(job.get('num_posts', 0) for job in pending_jobs)
+    start_time = time.time()
+
+    for job_info in pending_jobs:
+        job_id = job_info['job_id']
+        raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
+        
+        original_posts_chunk = None
+        if os.path.exists(raw_posts_file_path):
+            with open(raw_posts_file_path, "r") as f:
+                original_posts_chunk = [json.loads(line) for line in f]
+        
+        chunk_results = download_gemini_batch_results(job_id, original_posts_chunk)
+        all_enriched_posts.extend(chunk_results)
+
+    job_duration = time.time() - start_time
+    utils.update_performance_log(job_duration, total_posts)
+
+    if all_enriched_posts:
+        enriched_map = {post['url']: post for post in all_enriched_posts}
+        
+        all_current_posts = []
+        if os.path.exists(state_filepath):
+            with open(state_filepath, mode='r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                all_current_posts = list(reader)
+            
+        final_posts = [enriched_map.get(post['url'], post) for post in all_current_posts]
+            
+        storage_adapter = get_storage_adapter(app_config)
+        storage_adapter.save(final_posts, name, mode='overwrite')
+
 
 async def run_pipeline(args):
     """The primary orchestration function that executes the ETL workflow."""
@@ -348,7 +376,10 @@ async def run_pipeline(args):
         run_export_process(competitors_to_process, args.export, app_config)
 
     elif args.enrich:
-        logger.info("Discovering posts to enrich...")
+        # --- FIX: First, check for and process any pending jobs ---
+        logger.info("--- Enrichment process ---")
+        await _run_job_check_phase(competitors_to_process, app_config)
+        logger.info("Discovering posts in the state file that require enrichment...")
         enrichment_plan = []
         for competitor in competitors_to_process:
             state_folder = os.path.join("state", competitor['name'])

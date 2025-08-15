@@ -31,7 +31,7 @@ def _get_existing_urls(competitor_name):
 
     if os.path.exists(state_filepath):
         try:
-            with open(state_filepath, mode='r', newline='', encoding='utf-8') as csvfile:
+            with open(state_filepath, mode='r', newline='', encoding='utf-8-sig') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     if 'url' in row and row['url']:

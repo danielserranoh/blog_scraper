@@ -18,7 +18,8 @@ def _create_jsonl_from_posts(posts):
     jsonl_lines = []
     for i, post in enumerate(posts):
         if post.get('content') and post.get('content') != 'N/A':
-            prompt = f"Given the following blog post content, please provide a summary (no more than 350 characters) and a list of the 5 most important SEO keywords, ordered by importance. Return a JSON object with 'summary' and 'seo_keywords' keys.\n\nContent: {post['content']}"
+            prompt = utils.get_prompt("enrichment_instruction", content=post['content'])
+            if not prompt: continue
             
             # The contents and generationConfig must be nested inside a 'request' object.
             request_payload = {

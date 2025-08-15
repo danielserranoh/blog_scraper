@@ -1,10 +1,45 @@
 # src/utils.py
 # This file contains shared helper functions for the application.
 
-import logging
 import json
+import logging
 
 logger = logging.getLogger(__name__)
+
+# --- Prompt Management ---
+_PROMPTS = {}
+
+def _load_prompts():
+    """Loads the prompts from the config file into a global variable."""
+    global _PROMPTS
+    if not _PROMPTS:
+        try:
+            with open('config/config.json', 'r') as f:
+                config = json.load(f)
+                _PROMPTS = config.get('prompts', {})
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"Could not load prompts from config.json: {e}")
+            _PROMPTS = {}
+
+def get_prompt(prompt_name, content):
+    """
+    Retrieves a prompt instruction from the config and combines it with the
+    programmatic context (the content).
+    """
+    if not _PROMPTS:
+        _load_prompts()
+    
+    prompt_instruction = _PROMPTS.get(prompt_name)
+    if not prompt_instruction:
+        logger.error(f"Prompt instruction '{prompt_name}' not found in configuration.")
+        return ""
+        
+    # Combine the instruction with the context
+    return f"{prompt_instruction}\n\nContent: {content}"
+
+
+# --- Messaging and Reporting Management ---
+
 
 def get_job_status_summary(status_list):
     """
@@ -63,6 +98,8 @@ def get_batch_status_report(statuses):
     return False, summary
 
 
+# --- Performance Estimate for better UX ---
+
 def get_performance_estimate():
     """Reads the performance log and returns the average seconds per post."""
     try:
@@ -97,3 +134,6 @@ def update_performance_log(job_duration_seconds, num_posts):
 
     except (IOError, TypeError) as e:
         logger.warning(f"Could not update performance log: {e}")
+
+
+

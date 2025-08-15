@@ -3,7 +3,7 @@
 # Data Pipeline Mental Model
 The idea of a pipeline is how data engineers design and build these systems. Tracking the state of each piece of work as it moves through a series of steps and being able to safely resume the process if it fails is the core principle behind professional ETL (Extract, Transform, Load) pipelines.
 
-Let's break down how the features we've built perfectly map to your "pipeline" concept:
+Let's break down how the features to map them to the "pipeline" concept:
 
 ## Extraction (The Start of the Pipeline):
 

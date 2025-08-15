@@ -11,6 +11,8 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
+from src import utils
+
 logger = logging.getLogger(__name__)
 
 class GeminiAPIConnector:
@@ -33,7 +35,8 @@ class GeminiAPIConnector:
 
         summary = "N/A"
         seo_keywords = "N/A"
-        prompt = f"Given the following blog post content, please provide a summary (no more than 350 characters) and a list of the 5 most important SEO keywords, ordered by importance. Return a JSON object with 'summary' and 'seo_keywords' keys.\n\nContent: {content}"
+        prompt = utils.get_prompt("enrichment_instruction", content=content)
+
         
         for i in range(3): # Retry logic
             try:

@@ -137,7 +137,7 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
             logger.error(f"Failed to submit chunk {i+1}. The unsubmitted file has been left in the workspace for the next run.")
             # We DO NOT delete the unsubmitted_path file on failure.
 
-if job_tracking_list:
+    if job_tracking_list:
         # We need to add the source_raw_filepath to the pending_jobs.json
         # so the check_and_load_results function knows which raw file to process.
         _save_pending_jobs(competitor_name, job_tracking_list, source_raw_filepath)

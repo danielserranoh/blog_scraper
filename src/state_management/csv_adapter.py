@@ -4,6 +4,7 @@
 import csv
 import os
 import logging
+from datetime import datetime
 from .base_adapter import BaseAdapter
 
 logger = logging.getLogger(__name__)

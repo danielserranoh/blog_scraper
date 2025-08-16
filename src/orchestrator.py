@@ -16,6 +16,7 @@ from .state_management import get_storage_adapter
 from .load import exporters
 from .load.file_saver import save_export_file
 from . import utils
+from .api_connector import GeminiAPIConnector
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +137,12 @@ async def _submit_chunks_for_processing(competitor, posts, batch_model, app_conf
             logger.error(f"Failed to submit chunk {i+1}. The unsubmitted file has been left in the workspace for the next run.")
             # We DO NOT delete the unsubmitted_path file on failure.
 
-    if job_tracking_list:
-        _save_pending_jobs(competitor_name, job_tracking_list)
+if job_tracking_list:
+        # We need to add the source_raw_filepath to the pending_jobs.json
+        # so the check_and_load_results function knows which raw file to process.
+        _save_pending_jobs(competitor_name, job_tracking_list, source_raw_filepath)
         await _prompt_to_wait_for_job(competitor, len(posts), app_config)
+
 
 
 def _save_pending_jobs(competitor_name, job_tracking_list):
@@ -213,26 +217,34 @@ def _cleanup_workspace(competitor, pending_jobs):
 # --- Main Workflow Functions ---
 
 async def run_scrape_and_submit(competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
-    """Scrapes the blog, chunks if necessary, and submits jobs."""
+    """Scrapes new posts, saves the raw output, and submits for enrichment."""
     name = competitor['name']
     all_posts = []
     async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
         all_posts.extend(batch)
-    if not all_posts:
-        return
-    # This ensures the state file is created before any enrichment happens.
-    if all_posts:
-        storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(all_posts, name, mode='append')
+    if not all_posts: return
 
-    if len(all_posts) < batch_threshold:
-        logger.info(f"Number of new posts ({len(all_posts)}) is below threshold. Using live processing.")
+    # --- UPDATED: Save the raw, unprocessed data and get the filepath ---
+    raw_data_adapter = get_storage_adapter(app_config)
+    raw_filepath = raw_data_adapter.save(all_posts, name)
+
+    if not raw_filepath:
+        logger.error("Failed to save raw data, aborting enrichment.")
+        return
+
+    processed_data_adapter = get_processed_data_adapter(app_config)
+
+    if len(all_posts) < batch_threshold and not scrape_all:
+        logger.info(f"Processing {len(all_posts)} posts in LIVE mode...")
+        enriched_posts = await transform_posts_live(all_posts, live_model)
         
-        transformed_posts = await transform_posts_live(all_posts, live_model)
-        storage_adapter = get_storage_adapter(app_config)
-        storage_adapter.save(transformed_posts, name, mode='overwrite')
+        # Use the new adapter to save the processed data
+        processed_data_adapter.save(enriched_posts, name, os.path.basename(raw_filepath))
+
     else:
-        await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config)
+        logger.info(f"Processing {len(all_posts)} posts in BATCH mode...")
+        await _submit_chunks_for_processing(competitor, all_posts, batch_model, app_config, raw_filepath)
+
 
 async def run_enrichment_process(competitor, batch_threshold, live_model, batch_model, app_config, all_posts_from_file, posts_to_enrich):
     """Enriches posts, chunks if necessary, and submits jobs."""
@@ -275,8 +287,16 @@ async def check_and_load_results(competitor, app_config):
             logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
             _consolidate_and_save_results(competitor, pending_jobs, app_config)
             
-            # 4. Only after a successful save, clean up the workspace.
+            name = competitor['name']
+            # The source_raw_filepath should be read from the pending_jobs.json
+            source_raw_filepath = pending_jobs.get("source_raw_filepath", "unknown_source.csv")
+
+            processed_data_adapter = get_processed_data_adapter(app_config)
+            processed_data_adapter.save(all_transformed_posts, name, os.path.basename(source_raw_filepath))
+            
+             # 4. Only after a successful save, clean up the workspace.
             _cleanup_workspace(competitor, pending_jobs)
+            
 
         except Exception as e:
             logger.error(f"A critical error occurred during result processing for '{name}': {e}")
@@ -287,33 +307,31 @@ async def check_and_load_results(competitor, app_config):
 
 
 def run_export_process(competitors_to_export, export_format, app_config):
-    """Finds the latest CSV for each competitor and exports the combined data."""
+    """
+    Reads from the 'processed' data directory to create user-facing exports.
+    """
     logger.info(f"--- Starting export process to {export_format.upper()} ---")
     all_posts_to_export = []
     
     for competitor in competitors_to_export:
         competitor_name = competitor['name']
+        # --- NEW PATH: Read from the 'processed' data directory ---
+        processed_folder = os.path.join("data", "processed", competitor_name)
         
-        state_folder = os.path.join("state", competitor_name)
-        state_filepath = os.path.join(state_folder, f"{competitor_name}_state.csv")
-
-        if not os.path.isdir(state_folder):
-            logger.warning(f"No data directory found for '{competitor_name}'. Skipping.")
+        if not os.path.isdir(processed_folder):
+            logger.warning(f"No processed data found for '{competitor_name}'. Skipping.")
             continue
         
-        csv_files = [f for f in os.listdir(state_folder) if f.endswith('.csv') and f.startswith(competitor_name)]
-        if not csv_files:
-            logger.warning(f"‼️ No state file found for '{competitor_name}'. Skipping.")
-            print(f" 💡 Try running a new scrape for '{competitor_name}'.")
-            continue
-            
-        logger.info(f" Reading latest data for '{competitor_name}' from: {os.path.basename(state_filepath)}")
-        
-        with open(state_filepath,  mode='r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for post in reader:
-                post['competitor'] = competitor_name
-                all_posts_to_export.append(post)
+        # Read all CSVs in the processed folder for that competitor
+        for filename in os.listdir(processed_folder):
+            if filename.endswith('.csv'):
+                filepath = os.path.join(processed_folder, filename)
+                logger.info(f"Reading data for '{competitor_name}' from: {filename}")
+                with open(filepath, mode='r', newline='', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f)
+                    for post in reader:
+                        post['competitor'] = competitor_name
+                        all_posts_to_export.append(post)
 
     if not all_posts_to_export:
         logger.warning("‼️ No data found to export.")

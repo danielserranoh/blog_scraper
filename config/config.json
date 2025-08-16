@@ -7,6 +7,9 @@
   "storage": {
     "adapter": "csv"
   },
+  "processed_data": {
+    "adapter": "csv"
+  },
   "google_sheets": {
     "spreadsheet_name": "Blog Scraper Export"
   },

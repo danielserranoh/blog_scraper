@@ -16,12 +16,11 @@ class CsvAdapter(BaseAdapter):
     def save(self, posts, competitor_name, mode='append'):
         """
         Saves the list of raw post data to a new, timestamped CSV file
-        in the data/raw/ directory. The 'mode' is ignored as we always
-        create a new file for each scrape.
+        in the data/raw/ directory.
         """
         if not posts:
             logger.warning(f"No new posts provided to save for {competitor_name}.")
-            return
+            return None
 
         output_folder = os.path.join('data', 'raw', competitor_name)
         os.makedirs(output_folder, exist_ok=True)
@@ -34,10 +33,11 @@ class CsvAdapter(BaseAdapter):
             
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
-                if write_header:
-                    writer.writeheader()
+                writer.writeheader()
                 writer.writerows(posts)
             
             logger.info(f"Successfully saved {len(posts)} raw posts to: {filepath}")
+            return filepath
         except IOError as e:
             logger.error(f"Could not write to raw data file {filepath}: {e}")
+            return None

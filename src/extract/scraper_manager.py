@@ -3,7 +3,7 @@
 
 import os
 import logging
-from src.extract import extract_posts_in_batches
+from . import extract_posts_in_batches
 from src.state_management import get_storage_adapter
 from src.load import get_processed_data_adapter
 from src.transform.enrichment_manager import EnrichmentManager

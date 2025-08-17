@@ -46,6 +46,10 @@ The script is run from the command line and offers several flags to control its 
     Finds the latest state file for a competitor and enriches any posts with missing summaries or keywords.
     `python main.py --enrich --competitor "modern campus"`
 
+* **Enrich Raw Data:**
+    Finds the latest raw data for a competitor and triggers the enrichment process for it.
+    `python main.py --enrich-raw --competitor "modern campus"`
+
 * **Check a Batch Job:**
     Checks the status of any pending batch jobs for one or all competitors.
     `python main.py --check-job --competitor "modern campus"`

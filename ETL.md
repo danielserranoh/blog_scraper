@@ -17,6 +17,7 @@ To keep our pipeline organized and robust, we've designed it like a team of spec
 * **Scraper Manager:** This manager's job is to get the raw data from the websites. It hands the posts to the next manager when it's done, without worrying about what happens to them next.
 * **Enrichment Manager:** This manager takes the raw posts and makes them better. Its only job is to get a summary and keywords for each post, deciding whether to do it live or in a batch.
 * **Export Manager:** This manager takes the final, processed data and prepares it to be shared with the world. Its only job is to format the data into a file, like a CSV or a Markdown document.
+* **State Manager:** This model centralizes all logic for saving and retrieving data across the entire pipeline. It acts as a single source of truth for all persistent data, regardless of which stage of the ETL process it's in.
 
 ***
 

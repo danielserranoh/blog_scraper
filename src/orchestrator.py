@@ -33,9 +33,9 @@ async def run_pipeline(args):
         return
 
     # Instantiate manager classes
-    batch_manager = BatchJobManager()
-    scraper_manager = ScraperManager()
-    enrichment_manager = EnrichmentManager()
+    batch_manager = BatchJobManager(app_config)
+    scraper_manager = ScraperManager(app_config)
+    enrichment_manager = EnrichmentManager(app_config)
     export_manager = ExportManager()
 
     if args.check_job:
@@ -54,6 +54,12 @@ async def run_pipeline(args):
             await enrichment_manager.run_enrichment_process(
                 competitor, batch_threshold, live_model, batch_model, app_config
             )
+    elif args.enrich_raw:
+        logger.info("--- Raw data enrichment process ---")
+        for competitor in competitors_to_process:
+            await enrichment_manager.enrich_raw_data(
+                competitor, batch_threshold, live_model, batch_model, app_config
+            )
     else:
         for competitor in competitors_to_process:
             await scraper_manager.run_scrape_and_submit(
@@ -66,6 +72,8 @@ async def run_pipeline(args):
         process_name = "Job Check"
     elif args.export:
         process_name = f"Export to {args.export.upper()}"
+    elif args.enrich_raw:
+        process_name = "Raw Enrichment"
     else:
         process_name = "Scraping"
 

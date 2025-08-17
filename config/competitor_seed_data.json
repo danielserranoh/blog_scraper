@@ -33,7 +33,6 @@
     },
     {
       "name": "modern campus",
-      "scraping_pattern": "single_list",
       "base_url": "https://moderncampus.com",
       "structure_pattern": "single_list",
       "pagination_pattern": {

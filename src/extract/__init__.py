@@ -4,6 +4,7 @@
 import logging
 import importlib
 from ._common import ScrapeStats
+from .scraper_manager import ScraperManager
 
 logger = logging.getLogger(__name__)
 

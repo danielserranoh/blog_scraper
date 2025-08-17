@@ -2,6 +2,7 @@
 # This file contains the factories for our data adapters.
 
 from .processed_data_adapter import CsvProcessedDataAdapter
+from .export_manager import ExportManager
 # Future adapters can be imported here, e.g.:
 # from .processed_data_adapter import JsonProcessedDataAdapter
 

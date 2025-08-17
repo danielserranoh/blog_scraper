@@ -6,6 +6,7 @@ import json
 import re
 import asyncio
 import os
+import csv
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 class GeminiAPIConnector:
     """
-    A wrapper for all interactions with the Google GenAI SDK.
+    A wrapper for all interactions with the Google GenAI SDK, ensuring that
+    all API calls are funneled through this single class.
     """
     def __init__(self):
         try:
@@ -40,7 +42,6 @@ class GeminiAPIConnector:
         
         for i in range(3): # Retry logic
             try:
-                # --- FIX: The model name should NOT have the 'models/' prefix ---
                 response = await self.client.aio.models.generate_content(
                     model=model_name,
                     contents=prompt,
@@ -57,23 +58,73 @@ class GeminiAPIConnector:
         
         return summary, seo_keywords
 
-    def create_batch_job(self, posts, competitor_name, model_name, temp_file_path):
-        """Creates and submits a new batch job from a pre-existing temp file."""
+    async def batch_enrich_posts_live(self, posts, model_name):
+        """
+        Transforms a batch of extracted post data by enriching it with live,
+        asynchronous calls to the Gemini API via the connector.
+        """
+        start_time = time.time()
+        
+        tasks = []
+        for post in posts:
+            if post['content'] and post['content'] != 'N/A':
+                tasks.append(self.enrich_post_live(post['content'], model_name, post['title']))
+            else:
+                # Create a completed future for posts with no content
+                future = asyncio.Future()
+                future.set_result(('N/A', 'N/A'))
+                tasks.append(future)
+
+        gemini_results = await asyncio.gather(*tasks)
+
+        transformed_posts = []
+        for i, post in enumerate(posts):
+            summary, seo_keywords = gemini_results[i]
+            post['summary'] = summary
+            post['seo_keywords'] = seo_keywords
+            transformed_posts.append(post)
+
+        logger.info(f"Live enrichment of {len(posts)} posts completed in {time.time() - start_time:.2f} seconds.")
+
+        # Sort the final list
+        posts_with_dates = [p for p in transformed_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
+        posts_without_dates = [p for p in transformed_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
+        posts_with_dates.sort(key=lambda x: datetime.strptime(x['publication_date'], '%Y-%m-%d'), reverse=True)
+        
+        return posts_with_dates + posts_without_dates
+
+    def create_batch_job(self, posts, competitor_name, model_name):
+        """
+        Creates and submits a new batch job from a list of post dictionaries.
+        This method handles the creation of the temporary JSONL file internally.
+        """
         if not self.client:
             return None
         
-        print(temp_file_path)
+        # 1. Create a JSONL formatted string from the post data.
+        jsonl_data = self._create_jsonl_from_posts(posts)
+        if not jsonl_data:
+            logger.warning("No posts with content to submit to Gemini API. Skipping batch job creation.")
+            return None
+
+        # 2. Create a temporary file to upload.
+        workspace_folder = os.path.join('workspace', competitor_name)
+        os.makedirs(workspace_folder, exist_ok=True)
+        temp_api_file_path = os.path.join(workspace_folder, "temp_api_requests.jsonl")
+        
         try:
-            logger.info(f"Uploading file '{os.path.basename(temp_file_path)}' for batch processing.")
+            with open(temp_api_file_path, "w", encoding="utf-8") as f:
+                f.write(jsonl_data)
+            
+            logger.info(f"Uploading file '{os.path.basename(temp_api_file_path)}' for batch processing.")
             
             uploaded_file = self.client.files.upload(
-                file=temp_file_path,
+                file=temp_api_file_path,
                 config=types.UploadFileConfig(mime_type="application/jsonl")
             )
             
             logger.info(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
             
-            # The model name for batch jobs also does not need the prefix
             batch_job = self.client.batches.create(
                 model=model_name,
                 src=uploaded_file.name,
@@ -83,6 +134,10 @@ class GeminiAPIConnector:
         except APIError as e:
             logger.error(f"Error submitting Gemini Batch API job: {e}")
             return None
+        finally:
+            # Always clean up the temporary file after upload.
+            if os.path.exists(temp_api_file_path):
+                os.remove(temp_api_file_path)
 
     def check_batch_job(self, job_id, verbose=True):
         """Checks the status of a given batch job."""
@@ -172,3 +227,42 @@ class GeminiAPIConnector:
         except Exception as e:
             logger.error(f"An unexpected error occurred while downloading results for job {job_id}: {e}")
             return original_posts or []
+    
+    def list_batch_jobs(self):
+        """Lists all batch jobs associated with the API key."""
+        if not self.client:
+            return []
+        try:
+            return list(self.client.batches.list())
+        except APIError as e:
+            logger.error(f"Error listing batch jobs: {e}")
+            return []
+
+    def cancel_batch_job(self, job_id):
+        """Cancels a specific batch job."""
+        if not self.client:
+            return
+        try:
+            self.client.batches.cancel(name=job_id)
+            logger.info(f"Successfully cancelled job: {job_id}")
+        except APIError as e:
+            logger.error(f"Error cancelling job {job_id}: {e}")
+
+    def _create_jsonl_from_posts(self, posts):
+        """
+        Creates a JSONL formatted string from a list of post dictionaries,
+        adhering to the correct Gemini API schema.
+        """
+        jsonl_lines = []
+        for i, post in enumerate(posts):
+            if post.get('content') and post.get('content') != 'N/A':
+                prompt = utils.get_prompt("enrichment_instruction", content=post['content'])
+                if not prompt: continue
+                
+                request_payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"response_mime_type": "application/json"}
+                }
+                json_line = {"key": f"post-{i}", "request": request_payload}
+                jsonl_lines.append(json.dumps(json_line))
+        return "\n".join(jsonl_lines)

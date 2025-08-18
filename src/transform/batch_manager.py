@@ -12,8 +12,7 @@ from datetime import datetime
 # Import live enrichment and other helpers
 from . import live
 from src import utils
-from src.state_management import get_storage_adapter
-from src.load import get_processed_data_adapter
+from src.state_management.state_manager import StateManager
 from src.api_connector import GeminiAPIConnector
 
 logger = logging.getLogger(__name__)
@@ -23,8 +22,9 @@ class BatchJobManager:
     Manages the entire lifecycle of one or more Gemini Batch jobs, from
     submission to result processing.
     """
-    def __init__(self):
+    def __init__(self, app_config):
         self.api_connector = GeminiAPIConnector()
+        self.state_manager = StateManager(app_config)
     
     async def submit_new_jobs(self, competitor, posts, batch_model, app_config, source_raw_filepath):
         """
@@ -44,7 +44,6 @@ class BatchJobManager:
             job_id = self.api_connector.create_batch_job(chunk, competitor_name, batch_model)
             
             if job_id:
-                # The job was submitted successfully, so we save a copy of the raw posts for later
                 unsubmitted_path = self._save_raw_posts(chunk, competitor_name, chunk_num=i+1)
                 if not unsubmitted_path: continue
                 submitted_path = os.path.join(workspace_folder, f"temp_posts_chunk_{i+1}.jsonl")
@@ -94,7 +93,7 @@ class BatchJobManager:
         if all_succeeded:
             try:
                 logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
-                self._consolidate_and_save_results(competitor, pending_jobs, app_config, source_raw_filepath)
+                await self._consolidate_and_save_results(competitor, pending_jobs, app_config, source_raw_filepath)
                 
                 self._cleanup_workspace(competitor, pending_jobs)
             except Exception as e:
@@ -156,7 +155,6 @@ class BatchJobManager:
             os.makedirs(workspace_folder, exist_ok=True)
             jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
             
-            # Combine the jobs and the source file path into a single JSON object
             data_to_save = {
                 "source_raw_filepath": source_raw_filepath,
                 "jobs": job_tracking_list
@@ -208,7 +206,7 @@ class BatchJobManager:
         logger.info(f"Cleaned up all temporary files for '{name}'.")
 
 
-    def _consolidate_and_save_results(self, competitor, pending_jobs, app_config, source_raw_filepath):
+    async def _consolidate_and_save_results(self, competitor, pending_jobs, app_config, source_raw_filepath):
         """Downloads results for all successful jobs, consolidates them, and updates the state file."""
         name = competitor['name']
         workspace_folder = os.path.join('workspace', name)
@@ -252,6 +250,5 @@ class BatchJobManager:
             
             final_posts = list(original_posts_map.values())
 
-            # Save the final, merged data using the processed data adapter
-            processed_data_adapter = get_processed_data_adapter(app_config)
-            processed_data_adapter.save(final_posts, name, os.path.basename(source_raw_filepath))
+            # Use the StateManager to save the processed data
+            self.state_manager.save_processed_data(final_posts, name, os.path.basename(source_raw_filepath))

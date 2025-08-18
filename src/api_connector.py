@@ -7,6 +7,7 @@ import re
 import asyncio
 import os
 import csv
+import time
 from datetime import datetime
 from google import genai
 from google.genai import types

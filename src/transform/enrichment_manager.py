@@ -7,7 +7,6 @@ import logging
 from .live import transform_posts_live
 from .batch_manager import BatchJobManager
 from src.state_management.state_manager import StateManager
-from src.load import get_processed_data_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,6 @@ class EnrichmentManager:
     def __init__(self, app_config):
         self.batch_manager = BatchJobManager(app_config)
         self.state_manager = StateManager(app_config)
-        self.processed_data_adapter = get_processed_data_adapter(app_config)
 
     def _find_posts_to_enrich(self, competitor_name):
         """
@@ -98,7 +96,7 @@ class EnrichmentManager:
                 final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
                 
                 # Use the new adapter to save the processed data
-                self.processed_data_adapter.save(final_posts, competitor_name, os.path.basename("placeholder.csv"))
+                self.state_manager.save_processed_data(final_posts, competitor_name, "placeholder.csv")
         else:
             logger.info(f"Processing {len(posts)} posts in BATCH mode...")
             await self.batch_manager.submit_new_jobs(

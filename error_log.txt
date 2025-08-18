@@ -4,11 +4,369 @@ rootdir: /Users/danielserrano/Tools/blog_scraper
 configfile: pyproject.toml
 plugins: respx-0.22.0, asyncio-1.1.0, anyio-4.10.0, mock-3.14.1
 asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 11 items
+collected 17 items
 
-tests/test_extraction.py .                                               [  9%]
-tests/test_orchestrator.py ...                                           [ 36%]
-tests/test_transform_batch.py .....                                      [ 81%]
-tests/test_transform_live.py ..                                          [100%]
+tests/test_batch_manager.py F.F                                          [ 17%]
+tests/test_enrichment_live.py .                                          [ 23%]
+tests/test_enrichment_manager.py F..F                                    [ 47%]
+tests/test_extraction_blog_patterns.py .                                 [ 52%]
+tests/test_orchestrator.py .....                                         [ 82%]
+tests/test_scraper_manager.py F.F                                        [100%]
 
-============================== 11 passed in 2.23s ==============================
+=================================== FAILURES ===================================
+_______________ test_submit_new_jobs_calls_connector_create_job ________________
+
+self = <MagicMock name='mock.create_batch_job' id='4375107568'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'create_batch_job' to have been called once. Called 0 times.
+
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/mock.py:956: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x104c6cd70>
+mock_app_config = {'batch_threshold': 10}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts = [{'content': 'Content 1.', 'publication_date': '2025-07-30', 'seo_meta_keywords': 'k1, k2', 'title': 'Test Post 1', .....'content': 'Content 2.', 'publication_date': '2025-07-29', 'seo_meta_keywords': 'k3, k4', 'title': 'Test Post 2', ...}]
+mock_api_connector = <MagicMock spec='GeminiAPIConnector' id='4375105888'>
+
+    @pytest.mark.asyncio
+    async def test_submit_new_jobs_calls_connector_create_job(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_api_connector):
+        """
+        Tests that the BatchJobManager correctly calls the API connector
+        to submit a new batch job.
+        """
+        mocker.patch.object(BatchJobManager, '_split_posts_into_chunks', return_value=[mock_posts])
+        mocker.patch.object(BatchJobManager, '_save_raw_posts', return_value="workspace/mock_path.jsonl")
+        mock_api_connector.create_batch_job.return_value = "batches/mock-job-id"
+        mocker.patch.object(BatchJobManager, '_save_pending_jobs')
+        mocker.patch('os.rename')
+        mocker.patch.object(BatchJobManager, '_prompt_to_wait_for_job', new_callable=AsyncMock)
+    
+        manager = BatchJobManager(mock_app_config)
+        await manager.submit_new_jobs(mock_competitor_config, mock_posts, "gemini-model", mock_app_config, "raw_filepath")
+    
+>       mock_api_connector.create_batch_job.assert_called_once()
+E       AssertionError: Expected 'create_batch_job' to have been called once. Called 0 times.
+
+tests/test_batch_manager.py:55: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:136 Error submitting Gemini Batch API job: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}
+ERROR    src.transform.batch_manager:batch_manager.py:58 Failed to submit chunk 1. The unsubmitted file has been left in the workspace for the next run.
+________________ test_consolidate_and_save_results_merges_data _________________
+
+self = <MagicMock name='download_batch_results' id='4381669904'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'download_batch_results' to have been called once. Called 0 times.
+
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/mock.py:956: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x104beec10>
+mock_app_config = {'batch_threshold': 10}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts = [{'content': 'Content 1.', 'publication_date': '2025-07-30', 'seo_meta_keywords': 'k1, k2', 'title': 'Test Post 1', .....'content': 'Content 2.', 'publication_date': '2025-07-29', 'seo_meta_keywords': 'k3, k4', 'title': 'Test Post 2', ...}]
+mock_api_connector = <MagicMock spec='GeminiAPIConnector' id='4376048512'>
+
+    @pytest.mark.asyncio
+    async def test_consolidate_and_save_results_merges_data(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_api_connector):
+        """
+        Tests that the BatchJobManager correctly downloads and merges results
+        from the API connector and saves them using the StateManager.
+        """
+        pending_jobs_data = [{"job_id": "batches/job-1", "raw_posts_file": "chunk1.jsonl", "num_posts": 2}]
+    
+        # Create mock content for the two different files the method reads
+        jsonl_content = json.dumps(mock_posts[0]) + "\n" + json.dumps(mock_posts[1]) + "\n"
+        csv_content = "title,publication_date,url,summary,seo_keywords,seo_meta_keywords,content\n" \
+                      "Test Post 1,2025-07-30,https://example.com/post-1,N/A,N/A,k1, k2,Content 1.\n" \
+                      "Test Post 2,2025-07-29,https://example.com/post-2,N/A,N/A,k3, k4,Content 2.\n"
+    
+        # Mock os.path.exists to return True for both file paths
+        mocker.patch('os.path.exists', side_effect=[True, True])
+    
+        # Use a mock open with a side_effect to return different content for each file open call
+        mock_file_handle = mocker.mock_open()
+        mock_file_handle.side_effect = [
+            mocker.mock_open(read_data=jsonl_content).return_value,
+            mocker.mock_open(read_data=csv_content).return_value
+        ]
+        mocker.patch('builtins.open', mock_file_handle)
+    
+        mock_download_results = mocker.patch.object(mock_api_connector, 'download_batch_results', return_value=[
+            {'title': 'Test Post 1', 'url': 'https://example.com/post-1', 'summary': 'Summary 1', 'seo_keywords': 'k1, k2'},
+            {'title': 'Test Post 2', 'url': 'https://example.com/post-2', 'summary': 'Summary 2', 'seo_keywords': 'k3, k4'}
+        ])
+    
+        mock_state_manager = mocker.patch('src.transform.batch_manager.StateManager')
+        mocker.patch('src.utils.update_performance_log')
+    
+        manager = BatchJobManager(mock_app_config)
+        await manager._consolidate_and_save_results(mock_competitor_config, pending_jobs_data, mock_app_config, "raw_filepath")
+    
+        # Assert that the download was called and the save method on StateManager was called
+>       mock_download_results.assert_called_once()
+E       AssertionError: Expected 'download_batch_results' to have been called once. Called 0 times.
+
+tests/test_batch_manager.py:119: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:229 An unexpected error occurred while downloading results for job batches/job-1: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}
+___________________ test_run_enrichment_process_finds_posts ____________________
+
+self = <AsyncMock name='mock.enrich_posts' id='4376041792'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'enrich_posts' to have been called once. Called 0 times.
+
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/mock.py:956: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x104d2cb00>
+mock_app_config = {'batch_threshold': 10, 'storage': {'adapter': 'csv'}}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts_needing_enrichment = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'Existing Summary', 'title': 'Post 2', ...}]
+mock_state_manager = <MagicMock spec='StateManager' id='4376045152'>
+mock_enrichment_manager = <MagicMock spec='EnrichmentManager' id='4376043136'>
+
+    @pytest.mark.asyncio
+    async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment, mock_state_manager, mock_enrichment_manager):
+        """
+        Tests that the enrichment process correctly finds and submits posts
+        with missing enrichment data.
+        """
+        # Combine posts that need enrichment with already enriched posts
+        all_posts = mock_posts_needing_enrichment + [
+            {'title': 'Post 3', 'url': 'https://example.com/p3', 'summary': 'Summary 3', 'seo_keywords': 'k3'}
+        ]
+    
+        mock_state_manager.load_processed_data.return_value = all_posts
+    
+        manager = EnrichmentManager(mock_app_config)
+        await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config)
+    
+        # Assert that enrich_posts was called with only the posts that need enriching
+>       mock_enrichment_manager.enrich_posts.assert_called_once()
+E       AssertionError: Expected 'enrich_posts' to have been called once. Called 0 times.
+
+tests/test_enrichment_manager.py:58: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+_________________________ test_enrich_posts_batch_mode _________________________
+
+self = <AsyncMock name='mock.submit_new_jobs' id='4375994992'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'submit_new_jobs' to have been called once. Called 0 times.
+
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/mock.py:956: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x104e3a690>
+mock_app_config = {'batch_threshold': 1, 'storage': {'adapter': 'csv'}}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts_needing_enrichment = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'Existing Summary', 'title': 'Post 2', ...}]
+mock_enrichment_manager = <MagicMock spec='EnrichmentManager' id='4376044144'>
+mock_batch_manager = <MagicMock spec='BatchJobManager' id='4376047840'>
+
+    @pytest.mark.asyncio
+    async def test_enrich_posts_batch_mode(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment, mock_enrichment_manager, mock_batch_manager):
+        """
+        Tests that posts are submitted to batch mode if above the batch threshold.
+        """
+        # Set a high batch threshold to force batch mode
+        mock_app_config['batch_threshold'] = 1
+    
+        # Mock the transform_posts_live function
+        mock_transform_live = mocker.patch('src.transform.enrichment_manager.transform_posts_live', new_callable=AsyncMock)
+    
+        manager = EnrichmentManager(mock_app_config)
+        await manager.enrich_posts(
+            competitor=mock_competitor_config,
+            posts=mock_posts_needing_enrichment,
+            all_posts_from_file=mock_posts_needing_enrichment,
+            batch_threshold=mock_app_config['batch_threshold'],
+            live_model="live_model",
+            batch_model="batch_model",
+            app_config=mock_app_config
+        )
+    
+        # Assert that batch enrichment was called and live was not
+>       mock_batch_manager.submit_new_jobs.assert_called_once()
+E       AssertionError: Expected 'submit_new_jobs' to have been called once. Called 0 times.
+
+tests/test_enrichment_manager.py:130: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:136 Error submitting Gemini Batch API job: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}
+ERROR    src.transform.batch_manager:batch_manager.py:58 Failed to submit chunk 1. The unsubmitted file has been left in the workspace for the next run.
+______________________ test_run_scrape_and_submit_success ______________________
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x104cbb6c0>
+mock_app_config = {'batch_threshold': 10, 'storage': {'adapter': 'csv'}}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 2', ...}]
+mock_state_manager = <MagicMock spec='StateManager' id='4375987264'>
+mock_enrichment_manager = <MagicMock spec='EnrichmentManager' id='4375107568'>
+
+    @pytest.mark.asyncio
+    async def test_run_scrape_and_submit_success(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_state_manager, mock_enrichment_manager):
+        """
+        Tests that a successful scrape results in calls to save raw data
+        and trigger the enrichment process.
+        """
+        # Mock the extract_posts_in_batches to return an async generator
+        mocker.patch('src.extract.scraper_manager.extract_posts_in_batches', return_value=async_gen([mock_posts]))
+    
+        mock_state_manager.save_raw_data.return_value = "data/raw/test_competitor_timestamp.csv"
+        mock_enrichment_manager.enrich_posts.return_value = AsyncMock()
+    
+        manager = ScraperManager(mock_app_config)
+>       await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config)
+
+tests/test_scraper_manager.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/extract/scraper_manager.py:43: in run_scrape_and_submit
+    await self.enrichment_manager.enrich_posts(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <src.transform.enrichment_manager.EnrichmentManager object at 0x1052c7a80>
+competitor = {'name': 'test_competitor'}
+posts = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 2', ...}]
+all_posts_from_file = 'data/raw/test_competitor/test_competitor_20250818_232238.csv'
+batch_threshold = 10, live_model = 'live_model', batch_model = 'batch_model'
+app_config = {'batch_threshold': 10, 'storage': {'adapter': 'csv'}}
+
+    async def enrich_posts(self, competitor, posts, all_posts_from_file, batch_threshold, live_model, batch_model, app_config):
+        """
+        The central point for all post enrichment. It decides whether to use
+        live or batch mode and then calls the appropriate manager.
+        """
+        competitor_name = competitor['name']
+    
+        if len(posts) < batch_threshold:
+            logger.info(f"Processing {len(posts)} posts in LIVE mode...")
+            enriched_posts = await transform_posts_live(posts, live_model)
+            if enriched_posts:
+                enriched_map = {post['url']: post for post in enriched_posts}
+>               final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
+                                                ^^^^^^^^^^^
+E               TypeError: string indices must be integers, not 'str'
+
+src/transform/enrichment_manager.py:96: TypeError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+_____________________ test_run_scrape_and_submit_save_fail _____________________
+
+mocker = <pytest_mock.plugin.MockerFixture object at 0x105251e60>
+mock_app_config = {'batch_threshold': 10, 'storage': {'adapter': 'csv'}}
+mock_competitor_config = {'name': 'test_competitor'}
+mock_posts = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 2', ...}]
+caplog = <_pytest.logging.LogCaptureFixture object at 0x104d50440>
+mock_state_manager = <MagicMock spec='StateManager' id='4376037424'>
+mock_enrichment_manager = <MagicMock spec='EnrichmentManager' id='4376036080'>
+
+    @pytest.mark.asyncio
+    async def test_run_scrape_and_submit_save_fail(mocker, mock_app_config, mock_competitor_config, mock_posts, caplog, mock_state_manager, mock_enrichment_manager):
+        """
+        Tests that the process aborts gracefully if saving the raw data fails.
+        """
+        # Mock extract_posts_in_batches to return an async generator
+        mocker.patch('src.extract.scraper_manager.extract_posts_in_batches', return_value=async_gen([mock_posts]))
+    
+        mock_state_manager.save_raw_data.return_value = None
+    
+        manager = ScraperManager(mock_app_config)
+        with caplog.at_level(logging.ERROR):
+>           await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config)
+
+tests/test_scraper_manager.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/extract/scraper_manager.py:43: in run_scrape_and_submit
+    await self.enrichment_manager.enrich_posts(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <src.transform.enrichment_manager.EnrichmentManager object at 0x104e3acf0>
+competitor = {'name': 'test_competitor'}
+posts = [{'content': 'Content 1.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 1', ...}, {'content': 'Content 2.', 'seo_keywords': 'N/A', 'summary': 'N/A', 'title': 'Post 2', ...}]
+all_posts_from_file = 'data/raw/test_competitor/test_competitor_20250818_232246.csv'
+batch_threshold = 10, live_model = 'live_model', batch_model = 'batch_model'
+app_config = {'batch_threshold': 10, 'storage': {'adapter': 'csv'}}
+
+    async def enrich_posts(self, competitor, posts, all_posts_from_file, batch_threshold, live_model, batch_model, app_config):
+        """
+        The central point for all post enrichment. It decides whether to use
+        live or batch mode and then calls the appropriate manager.
+        """
+        competitor_name = competitor['name']
+    
+        if len(posts) < batch_threshold:
+            logger.info(f"Processing {len(posts)} posts in LIVE mode...")
+            enriched_posts = await transform_posts_live(posts, live_model)
+            if enriched_posts:
+                enriched_map = {post['url']: post for post in enriched_posts}
+>               final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
+                                                ^^^^^^^^^^^
+E               TypeError: string indices must be integers, not 'str'
+
+src/transform/enrichment_manager.py:96: TypeError
+------------------------------ Captured log call -------------------------------
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 1 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 2 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 1': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+ERROR    src.api_connector:api_connector.py:57     Live enrichment attempt 3 failed for 'Post 2': AsyncModels.generate_content() got an unexpected keyword argument 'generation_config'
+=========================== short test summary info ============================
+FAILED tests/test_batch_manager.py::test_submit_new_jobs_calls_connector_create_job
+FAILED tests/test_batch_manager.py::test_consolidate_and_save_results_merges_data
+FAILED tests/test_enrichment_manager.py::test_run_enrichment_process_finds_posts
+FAILED tests/test_enrichment_manager.py::test_enrich_posts_batch_mode - Asser...
+FAILED tests/test_scraper_manager.py::test_run_scrape_and_submit_success - Ty...
+FAILED tests/test_scraper_manager.py::test_run_scrape_and_submit_save_fail - ...
+======================== 6 failed, 11 passed in 29.35s =========================

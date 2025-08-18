@@ -4,8 +4,7 @@
 import os
 import logging
 from . import extract_posts_in_batches
-from src.state_management import get_storage_adapter
-from src.load import get_processed_data_adapter
+from src.state_management.state_manager import StateManager
 from src.transform.enrichment_manager import EnrichmentManager
 
 logger = logging.getLogger(__name__)
@@ -18,8 +17,9 @@ class ScraperManager:
     deciding whether to submit for live or batch enrichment.
     """
 
-    def __init__(self):
-        self.enrichment_manager = EnrichmentManager()
+    def __init__(self, app_config):
+        self.enrichment_manager = EnrichmentManager(app_config)
+        self.state_manager = StateManager(app_config)
     
     async def run_scrape_and_submit(self, competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
         """
@@ -33,8 +33,7 @@ class ScraperManager:
             return
 
         # 1. Save the raw, unprocessed data and get the filepath
-        storage_adapter = get_storage_adapter(app_config)
-        raw_filepath = storage_adapter.save(all_posts, name)
+        raw_filepath = self.state_manager.save_raw_data(all_posts, name)
 
         if not raw_filepath:
             logger.error("Failed to save raw data, aborting enrichment.")

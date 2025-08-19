@@ -37,11 +37,12 @@ def mock_posts():
     ]
 
 @pytest.mark.asyncio
-async def test_submit_new_jobs_calls_connector_create_job(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_api_connector):
+async def test_submit_new_jobs_calls_connector_create_job(mocker, mock_app_config, mock_competitor_config, mock_posts):
     """
     Tests that the BatchJobManager correctly calls the API connector
     to submit a new batch job.
     """
+    mock_api_connector = mocker.patch('src.transform.batch_manager.GeminiAPIConnector', autospec=True).return_value
     mock_api_connector.create_batch_job.return_value = "batches/mock-job-id"
     
     mocker.patch.object(BatchJobManager, '_split_posts_into_chunks', return_value=[mock_posts])
@@ -57,7 +58,7 @@ async def test_submit_new_jobs_calls_connector_create_job(mocker, mock_app_confi
     assert mock_api_connector.create_batch_job.call_args[0][2] == "gemini-model"
 
 @pytest.mark.asyncio
-async def test_check_and_load_results_success(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_api_connector):
+async def test_check_and_load_results_success(mocker, mock_app_config, mock_competitor_config, mock_posts):
     """
     Tests that the BatchJobManager correctly handles a successful job check
     and consolidates the results.
@@ -68,6 +69,8 @@ async def test_check_and_load_results_success(mocker, mock_app_config, mock_comp
     
     mocker.patch('os.path.exists', return_value=True)
     mocker.patch('builtins.open', mocker.mock_open(read_data=json.dumps(pending_jobs_data)))
+    
+    mock_api_connector = mocker.patch('src.transform.batch_manager.GeminiAPIConnector', autospec=True).return_value
     mock_api_connector.check_batch_job.return_value = 'JOB_STATE_SUCCEEDED'
     
     mocker.patch.object(BatchJobManager, '_consolidate_and_save_results', new_callable=AsyncMock)
@@ -83,7 +86,7 @@ async def test_check_and_load_results_success(mocker, mock_app_config, mock_comp
     manager._cleanup_workspace.assert_called_once()
     
 @pytest.mark.asyncio
-async def test_consolidate_and_save_results_merges_data(mocker, mock_app_config, mock_competitor_config, mock_posts, mock_api_connector):
+async def test_consolidate_and_save_results_merges_data(mocker, mock_app_config, mock_competitor_config, mock_posts):
     """
     Tests that the BatchJobManager correctly downloads and merges results
     from the API connector and saves them using the StateManager.
@@ -107,6 +110,7 @@ async def test_consolidate_and_save_results_merges_data(mocker, mock_app_config,
     ]
     mocker.patch('builtins.open', mock_file_handle)
     
+    mock_api_connector = mocker.patch('src.transform.batch_manager.GeminiAPIConnector', autospec=True).return_value
     mock_api_connector.download_batch_results.return_value = [
         {'title': 'Test Post 1', 'url': 'https://example.com/post-1', 'summary': 'Summary 1', 'seo_keywords': 'k1, k2'},
         {'title': 'Test Post 2', 'url': 'https://example.com/post-2', 'summary': 'Summary 2', 'seo_keywords': 'k3, k4'}
@@ -116,7 +120,7 @@ async def test_consolidate_and_save_results_merges_data(mocker, mock_app_config,
     mocker.patch('src.utils.update_performance_log')
 
     manager = BatchJobManager(mock_app_config)
-    manager._consolidate_and_save_results(mock_competitor_config, pending_jobs_data, mock_app_config, "raw_filepath")
+    await manager._consolidate_and_save_results(mock_competitor_config, pending_jobs_data, mock_app_config, "raw_filepath")
     
     # Assert that the download was called and the save method on StateManager was called
     mock_api_connector.download_batch_results.assert_called_once()

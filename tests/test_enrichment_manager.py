@@ -37,9 +37,8 @@ def mock_fully_enriched_posts():
         {'title': 'Post 3', 'url': 'https://example.com/p3', 'summary': 'Summary 3', 'seo_keywords': 'k3', 'content': 'Content 3.'},
     ]
 
-
 @pytest.mark.asyncio
-async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment, mock_state_manager, mock_enrichment_manager):
+async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment):
     """
     Tests that the enrichment process correctly finds and submits posts
     with missing enrichment data.
@@ -49,14 +48,20 @@ async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_
         {'title': 'Post 3', 'url': 'https://example.com/p3', 'summary': 'Summary 3', 'seo_keywords': 'k3'}
     ]
     
-    mock_state_manager.load_processed_data.return_value = all_posts
+    # Mock the StateManager class and instance locally
+    mock_state_manager_instance = mocker.Mock(spec=StateManager)
+    mock_state_manager_instance.load_processed_data.return_value = all_posts
+    mocker.patch('src.transform.enrichment_manager.StateManager', return_value=mock_state_manager_instance)
     
+    # Mock the EnrichmentManager instance to isolate the run_enrichment_process method
     manager = EnrichmentManager(mock_app_config)
+    manager.enrich_posts = AsyncMock()
+
     await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config)
     
     # Assert that enrich_posts was called with only the posts that need enriching
-    mock_enrichment_manager.enrich_posts.assert_called_once()
-    args, _ = mock_enrichment_manager.enrich_posts.call_args
+    manager.enrich_posts.assert_called_once()
+    args, _ = manager.enrich_posts.call_args
     posts_sent_for_enrichment = args[1]
     assert len(posts_sent_for_enrichment) == 2
     assert posts_sent_for_enrichment[0]['url'] == 'https://example.com/p1'
@@ -64,28 +69,37 @@ async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_
 
 
 @pytest.mark.asyncio
-async def test_run_enrichment_process_no_posts_to_enrich(mocker, mock_app_config, mock_competitor_config, mock_fully_enriched_posts, mock_state_manager, mock_enrichment_manager):
+async def test_run_enrichment_process_no_posts_to_enrich(mocker, mock_app_config, mock_competitor_config, mock_fully_enriched_posts):
     """
     Tests that if no posts need enrichment, the process stops gracefully.
     """
-    mock_state_manager.load_processed_data.return_value = mock_fully_enriched_posts
+    # Mock the StateManager class and instance locally
+    mock_state_manager_instance = mocker.Mock(spec=StateManager)
+    mock_state_manager_instance.load_processed_data.return_value = mock_fully_enriched_posts
+    mocker.patch('src.transform.enrichment_manager.StateManager', return_value=mock_state_manager_instance)
     
+    # Mock the EnrichmentManager instance to isolate the run_enrichment_process method
     manager = EnrichmentManager(mock_app_config)
+    manager.enrich_posts = AsyncMock()
+
     await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config)
 
     # Assert that enrich_posts was never called
-    mock_enrichment_manager.enrich_posts.assert_not_called()
+    manager.enrich_posts.assert_not_called()
     
 
 @pytest.mark.asyncio
-async def test_enrich_posts_live_mode(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment, mock_enrichment_manager, mock_batch_manager):
+async def test_enrich_posts_live_mode(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment):
     """
     Tests that posts are submitted to live mode if below the batch threshold.
     """
     # Set a low batch threshold to force live mode
     mock_app_config['batch_threshold'] = 5
     
-    # Mock the transform_posts_live function
+    # Mock the dependencies locally
+    mocker.patch('src.transform.enrichment_manager.StateManager', autospec=True)
+    mock_batch_manager_instance = mocker.Mock(spec=BatchJobManager)
+    mocker.patch('src.transform.enrichment_manager.BatchJobManager', return_value=mock_batch_manager_instance)
     mock_transform_live = mocker.patch('src.transform.enrichment_manager.transform_posts_live', new_callable=AsyncMock)
     
     manager = EnrichmentManager(mock_app_config)
@@ -101,18 +115,22 @@ async def test_enrich_posts_live_mode(mocker, mock_app_config, mock_competitor_c
     
     # Assert that live enrichment was called and batch was not
     mock_transform_live.assert_called_once()
-    mock_batch_manager.submit_new_jobs.assert_not_called()
+    mock_batch_manager_instance.submit_new_jobs.assert_not_called()
     
 
 @pytest.mark.asyncio
-async def test_enrich_posts_batch_mode(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment, mock_enrichment_manager, mock_batch_manager):
+async def test_enrich_posts_batch_mode(mocker, mock_app_config, mock_competitor_config, mock_posts_needing_enrichment):
     """
     Tests that posts are submitted to batch mode if above the batch threshold.
     """
     # Set a high batch threshold to force batch mode
     mock_app_config['batch_threshold'] = 1
     
-    # Mock the transform_posts_live function
+    # Mock the dependencies locally
+    mocker.patch('src.transform.enrichment_manager.StateManager', autospec=True)
+    mock_batch_manager_instance = mocker.Mock(spec=BatchJobManager)
+    mock_batch_manager_instance.submit_new_jobs = AsyncMock()
+    mocker.patch('src.transform.enrichment_manager.BatchJobManager', return_value=mock_batch_manager_instance)
     mock_transform_live = mocker.patch('src.transform.enrichment_manager.transform_posts_live', new_callable=AsyncMock)
     
     manager = EnrichmentManager(mock_app_config)
@@ -127,5 +145,5 @@ async def test_enrich_posts_batch_mode(mocker, mock_app_config, mock_competitor_
     )
 
     # Assert that batch enrichment was called and live was not
-    mock_batch_manager.submit_new_jobs.assert_called_once()
+    mock_batch_manager_instance.submit_new_jobs.assert_called_once()
     mock_transform_live.assert_not_called()

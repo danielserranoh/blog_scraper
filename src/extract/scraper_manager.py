@@ -42,7 +42,7 @@ class ScraperManager:
         # 2. Pass the posts to the EnrichmentManager for processing
         await self.enrichment_manager.enrich_posts(
             competitor,
-            all_posts,
+            all_posts, # <-- CORRECTED: Pass the list of posts, not the file path
             raw_filepath,
             batch_threshold,
             live_model,

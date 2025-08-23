@@ -13,7 +13,22 @@
   "google_sheets": {
     "spreadsheet_name": "Blog Scraper Export"
   },
+  "dxp_competitors": [
+    "WordPress",
+    "Drupal",
+    "Contentful",
+    "Sitecore",
+    "Acquia",
+    "Adobe Experience Manager",
+    "Optimizely",
+    "Storyblok",
+    "Umbraco",
+    "Kentico",
+    "Progress Sitefinity",
+    "Liferay",
+    "Salesforce Experience Cloud"
+  ],
   "prompts": {
-    "enrichment_instruction": "Given the following blog post content, please provide a summary (no more than 350 characters) and a list of the 5 most important SEO keywords, ordered by importance. Return a JSON object with 'summary' and 'seo_keywords' keys."
+    "enrichment_instruction": "Given the following blog post content, provide a summary (no more than 350 characters), a list of the 5 most important SEO keywords, and a classification of its inbound marketing 'funnel_stage' (ToFu, MoFu, or BoFu). Use the following definitions: ToFu (Awareness) is educational, problem-focused content; MoFu (Consideration) is solution-focused content; BoFu (Decision) is product-focused content. Return a JSON object with 'summary', 'seo_keywords', and 'funnel_stage' keys."
   }
 }

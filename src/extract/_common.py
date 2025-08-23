@@ -105,6 +105,20 @@ def _extract_post_title(soup, config):
         return title_element.text.strip()
         
     return 'No Title Found'
+
+def _extract_headings(soup):
+    """
+    Extracts all headings (h1, h2, h3) from the BeautifulSoup object.
+    """
+    headings = []
+    # Find all heading tags
+    heading_tags = soup.find_all(['h1', 'h2', 'h3'])
+    for tag in heading_tags:
+        headings.append({
+            'tag': tag.name,
+            'text': tag.get_text(strip=True)
+        })
+    return headings
     
 def _extract_post_content(soup, config):
     """
@@ -147,6 +161,7 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
 
         pub_date = _extract_post_publication_date(soup, config, full_url)
         title = _extract_post_title(soup, config)
+        heading_list = _extract_headings(soup)
         content_text = _extract_post_content(soup, config)
         keywords_meta = soup.find('meta', {'name': 'keywords'})
         seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'       
@@ -155,6 +170,7 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
             'title': title,
             'url': full_url,
             'publication_date': pub_date.strftime('%Y-%m-%d') if pub_date else 'N/A',
+            'headings': heading_list if heading_list else 'N/A',
             'content': content_text if content_text else 'N/A',
             'summary': 'N/A',
             'seo_keywords': 'N/A',

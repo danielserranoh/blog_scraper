@@ -1,7 +1,7 @@
 # Python Blog Scraper and Analyzer
 
 ## Project Description
-This Python project is an advanced ETL (Extract, Transform, Load) pipeline designed to scrape blog posts from multiple competitor websites. It gathers key information such as the title, URL, publication date, and content, then enriches this data using the Gemini API to generate concise summaries and SEO keywords.
+This Python project is an advanced ETL (Extract, Transform, Load) pipeline designed to scrape blog posts from multiple competitor websites. It gathers key information such as the title, URL, publication date, and content, then enriches this data using the Gemini API to generate concise summaries, SEO keywords, and to classify the content's `funnel_stage`.
 
 The project is built on a modular, **manager-based architecture** that centralizes key functionality into dedicated components. This approach ensures the codebase is easy to maintain, scale, and extend. It also features a robust **dual API strategy** that intelligently switches between a high-performance "live" mode and a cost-effective "batch" mode for data enrichment.
 
@@ -27,7 +27,7 @@ Key architectural features include:
     ```
 
 3.  **Configuration Files**: The project uses two main configuration files in the `config/` directory:
-    * `config.json`: For application settings like the batch threshold and model names.
+    * `config.json`: For application settings like the batch threshold, model names, and a list of general DXP competitors to aid in funnel stage analysis.
     * `competitor_seed_data.json`: A list of the competitor websites and their assigned scraping patterns.
 
     A `performance_log.json` file will be created automatically in the `config/` directory to store data for the time estimation feature.
@@ -37,10 +37,13 @@ Key architectural features include:
 The script is run from the command line and offers several flags to control its behavior.
 
 * **Default Scrape (last 30 days):**
-    `python main.py`
+    `python main.py --scrape`
+
+* **Scrape Posts from a Specific Number of Days:**
+    `python main.py --scrape 60`
 
 * **Scrape All Posts for a Competitor:**
-    `python main.py --all --competitor "squiz"`
+    `python main.py --scrape-all --competitor "squiz"`
 
 * **Enrich Existing Data:**
     Finds the latest state file for a competitor and enriches any posts with missing summaries or keywords.

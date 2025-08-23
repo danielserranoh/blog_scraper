@@ -31,15 +31,24 @@ def _format_as_txt(posts):
         output.append(f"Summary: {post.get('summary', 'N/A')}")
         output.append(f"SEO Keywords (LLM): {post.get('seo_keywords', 'N/A')}")
         output.append(f"Meta Keywords: {post.get('seo_meta_keywords', 'N/A') + ' '}")
+
+        # --- UPDATED: Format headings for text output ---
+        headings_list = post.get('headings', [])
+        if headings_list:
+            output.append("Headings:")
+            for heading in headings_list:
+                output.append(f"  - {heading['text']} ({heading['tag']})")
+        else:
+            output.append("Headings: N/A")
+            
+        # --- NEW: Add funnel stage to text output ---
+        output.append(f"Funnel Stage: {post.get('funnel_stage', 'N/A')}")
+
         output.append("-" * 40)
     return "\n".join(output)
 
 def _format_as_json(posts):
     """Formats a list of posts into a JSON string."""
-    # The CSV reader will read all values as strings, so we convert where appropriate
-    for post in posts:
-        # Example of converting a field if needed, though for JSON it's often fine
-        pass
     return json.dumps(posts, indent=2)
 
 def _format_as_md(posts):
@@ -55,6 +64,19 @@ def _format_as_md(posts):
         output.append(f"> {post.get('summary', 'N/A')}")
         output.append("\n**Keywords**: " + post.get('seo_keywords', 'N/A'))
         output.append("**Meta Keywords**: " + post.get('seo_meta_keywords', 'N/A') + "  ")
+
+        # --- UPDATED: Format headings for Markdown output ---
+        headings_list = post.get('headings', [])
+        if headings_list:
+            output.append("\n#### Headings")
+            for heading in headings_list:
+                # Use the tag to determine Markdown heading level
+                md_tag = '#' * int(heading['tag'][1])
+                output.append(f"{md_tag} {heading['text']}")
+        
+        # --- NEW: Add funnel stage to Markdown output ---
+        output.append(f"**Funnel Stage**: {post.get('funnel_stage', 'N/A')}")
+
         output.append("\n---")
     return "\n".join(output)
 

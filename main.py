@@ -46,9 +46,9 @@ def main():
         description="Scrape blog posts from competitor websites.",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('days', nargs='?', type=int, default=30, help='Days to look back for posts.')
+    parser.add_argument('--scrape', nargs='?', type=int, const=30, default=None, metavar='DAYS', help='Scrape posts from the last N days (default: 30).')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--all', action='store_true', help='Scrape all posts.')
+    group.add_argument('--scrape-all', action='store_true', help='Scrape all posts.')
     group.add_argument('--check-job', '-j', action='store_true', help='Check status of a batch job.')
     group.add_argument('--enrich', action='store_true', help='Enrich existing posts.')
     group.add_argument('--enrich-raw', action='store_true', help='Enrich posts from the raw data directory.')

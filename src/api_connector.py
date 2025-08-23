@@ -29,16 +29,17 @@ class GeminiAPIConnector:
             logger.error(f"Failed to initialize Gemini API client. Check your API key. Error: {e}")
             self.client = None
 
-    async def enrich_post_live(self, content, model_name, post_title="Unknown Post"):
+    async def enrich_post_live(self, content, model_name, post_title="Unknown Post", headings=None, primary_competitors=None, dxp_competitors=None):
         """
         Calls the Gemini API asynchronously to get a summary and keywords for a single post.
         """
         if not self.client:
-            return "N/A", "N/A"
+            return "N/A", "N/A", "N/A"
 
         summary = "N/A"
         seo_keywords = "N/A"
-        prompt = utils.get_prompt("enrichment_instruction", content=content)
+        funnel_stage = "N/A"
+        prompt = utils.get_prompt("enrichment_instruction", content=content, headings=headings, primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
 
         
         for i in range(3): # Retry logic
@@ -51,15 +52,16 @@ class GeminiAPIConnector:
                 parsed_json = json.loads(response.text)
                 summary = parsed_json.get('summary', 'N/A')
                 seo_keywords = ', '.join(parsed_json.get('seo_keywords', []))
+                funnel_stage = parsed_json.get('funnel_stage', 'N/A') # <-- NEW: Get funnel_stage from response
                 logger.info(f"    Live enrichment successful for '{post_title}'")
-                return summary, seo_keywords
+                return summary, seo_keywords, funnel_stage
             except Exception as e:
                 logger.error(f"    Live enrichment attempt {i+1} failed for '{post_title}': {e}")
                 await asyncio.sleep(2**i)
         
-        return summary, seo_keywords
+        return summary, seo_keywords, funnel_stage
 
-    async def batch_enrich_posts_live(self, posts, model_name):
+    async def batch_enrich_posts_live(self, posts, model_name, primary_competitors=None, dxp_competitors=None):
         """
         Transforms a batch of extracted post data by enriching it with live,
         asynchronous calls to the Gemini API via the connector.
@@ -69,20 +71,21 @@ class GeminiAPIConnector:
         tasks = []
         for post in posts:
             if post['content'] and post['content'] != 'N/A':
-                tasks.append(self.enrich_post_live(post['content'], model_name, post['title']))
+                tasks.append(self.enrich_post_live(post['content'], model_name, post['title'], post.get('headings'), primary_competitors, dxp_competitors))
             else:
                 # Create a completed future for posts with no content
                 future = asyncio.Future()
-                future.set_result(('N/A', 'N/A'))
+                future.set_result(('N/A', 'N/A', 'N/A'))
                 tasks.append(future)
 
         gemini_results = await asyncio.gather(*tasks)
 
         transformed_posts = []
         for i, post in enumerate(posts):
-            summary, seo_keywords = gemini_results[i]
+            summary, seo_keywords, funnel_stage = gemini_results[i]
             post['summary'] = summary
             post['seo_keywords'] = seo_keywords
+            post['funnel_stage'] = funnel_stage
             transformed_posts.append(post)
 
         logger.info(f"Live enrichment of {len(posts)} posts completed in {time.time() - start_time:.2f} seconds.")
@@ -94,7 +97,7 @@ class GeminiAPIConnector:
         
         return posts_with_dates + posts_without_dates
 
-    def create_batch_job(self, posts, competitor_name, model_name):
+    def create_batch_job(self, posts, competitor_name, model_name, primary_competitors=None, dxp_competitors=None):
         """
         Creates and submits a new batch job from a list of post dictionaries.
         This method handles the creation of the temporary JSONL file internally.
@@ -103,7 +106,7 @@ class GeminiAPIConnector:
             return None
         
         # 1. Create a JSONL formatted string from the post data.
-        jsonl_data = self._create_jsonl_from_posts(posts)
+        jsonl_data = self._create_jsonl_from_posts(posts, primary_competitors, dxp_competitors)
         if not jsonl_data:
             logger.warning("No posts with content to submit to Gemini API. Skipping batch job creation.")
             return None
@@ -214,8 +217,9 @@ class GeminiAPIConnector:
                     if parsed_json:
                         post['summary'] = parsed_json.get('summary', 'N/A')
                         post['seo_keywords'] = ', '.join(parsed_json.get('seo_keywords', []))
+                        post['funnel_stage'] = parsed_json.get('funnel_stage', 'N/A') # <-- NEW: Get funnel_stage from response
                     else:
-                        post['summary'], post['seo_keywords'] = 'N/A', 'N/A'
+                        post['summary'], post['seo_keywords'], post['funnel_stage'] = 'N/A', 'N/A', 'N/A'
                 
                 transformed_posts.append(post)
 
@@ -249,7 +253,7 @@ class GeminiAPIConnector:
         except APIError as e:
             logger.error(f"Error cancelling job {job_id}: {e}")
 
-    def _create_jsonl_from_posts(self, posts):
+    def _create_jsonl_from_posts(self, posts, primary_competitors=None, dxp_competitors=None):
         """
         Creates a JSONL formatted string from a list of post dictionaries,
         adhering to the correct Gemini API schema.
@@ -257,7 +261,7 @@ class GeminiAPIConnector:
         jsonl_lines = []
         for i, post in enumerate(posts):
             if post.get('content') and post.get('content') != 'N/A':
-                prompt = utils.get_prompt("enrichment_instruction", content=post['content'])
+                prompt = utils.get_prompt("enrichment_instruction", content=post['content'], headings=post.get('headings'), primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
                 if not prompt: continue
                 
                 request_payload = {

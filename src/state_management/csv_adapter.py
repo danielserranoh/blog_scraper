@@ -35,7 +35,8 @@ class CsvAdapter(BaseAdapter):
             return None
 
         try:
-            fieldnames = ['title', 'publication_date', 'url', 'summary', 'seo_keywords', 'seo_meta_keywords', 'content']
+            # --- UPDATED: Added a new field for 'funnel_stage' ---
+            fieldnames = ['title', 'publication_date', 'url', 'summary', 'seo_keywords', 'seo_meta_keywords', 'content', 'headings', 'funnel_stage']
             
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')

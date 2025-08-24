@@ -17,6 +17,41 @@ class ExportManager:
 
     def __init__(self):
         pass
+    
+    def _get_post_richness_score(self, post):
+        """
+        Calculates a score for a post based on how many fields contain
+        meaningful data.
+        """
+        score = 0
+        for key, value in post.items():
+            # A field is considered "rich" if it's not None, 'N/A', or an empty string/list
+            if value is not None and value != 'N/A' and value != '' and value != []:
+                score += 1
+        return score
+        
+    def _deduplicate_and_merge_posts(self, all_posts):
+        """
+        Deduplicates a list of posts based on URL, keeping the most data-rich entry
+        in case of duplicates.
+        """
+        unique_posts_map = {}
+        for post in all_posts:
+            url = post.get('url')
+            if not url:
+                continue
+            
+            # If we haven't seen this URL before, add it
+            if url not in unique_posts_map:
+                unique_posts_map[url] = post
+            else:
+                # If a duplicate is found, compare scores and keep the richest one
+                existing_post = unique_posts_map[url]
+                if self._get_post_richness_score(post) > self._get_post_richness_score(existing_post):
+                    unique_posts_map[url] = post
+                    
+        return list(unique_posts_map.values())
+
 
     def run_export_process(self, competitors_to_export, export_format, app_config):
         """
@@ -27,7 +62,7 @@ class ExportManager:
         
         for competitor in competitors_to_export:
             competitor_name = competitor['name']
-            # Read from the 'processed' data directory
+            # --- UPDATED PATH: Read from the 'processed' data directory ---
             processed_folder = os.path.join("data", "processed", competitor_name)
             
             if not os.path.isdir(processed_folder):
@@ -48,9 +83,12 @@ class ExportManager:
         if not all_posts_to_export:
             logger.warning("‼️ No data found to export.")
             return
+            
+        # --- NEW: Deduplicate and merge posts before exporting ---
+        final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)
 
         try:
-            formatted_data = exporters.export_data(all_posts_to_export, export_format, app_config)
+            formatted_data = exporters.export_data(final_posts, export_format, app_config)
         except ValueError as e:
             logger.error(e)
             return

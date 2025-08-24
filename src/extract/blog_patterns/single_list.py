@@ -48,6 +48,7 @@ async def scrape(config, days, scrape_all, batch_size, stats):
                             if post_url not in processed_in_run_urls: stats.skipped += 1
                             continue
                         processed_in_run_urls.add(post_url)
+
                         async def fetch_with_semaphore(post_link):
                             async with semaphore:
                                 return await _get_post_details(client, base_url, post_link['href'], config, stats)

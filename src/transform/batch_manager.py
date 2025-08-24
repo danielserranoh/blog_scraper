@@ -245,7 +245,8 @@ class BatchJobManager:
                 if original_url in original_posts_map:
                     original_posts_map[original_url].update({
                         'summary': enriched_post.get('summary', 'N/A'),
-                        'seo_keywords': enriched_post.get('seo_keywords', 'N/A')
+                        'seo_keywords': enriched_post.get('seo_keywords', 'N/A'),
+                        'funnel_stage': enriched_post.get('funnel_stage', 'N/A')
                     })
             
             final_posts = list(original_posts_map.values())

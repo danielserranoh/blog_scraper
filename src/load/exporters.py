@@ -60,19 +60,33 @@ def _format_as_md(posts):
         output.append(f"## {post.get('title', 'N/A')}")
         output.append(f"**Date**: {post.get('publication_date', 'N/A')}  ")
         output.append(f"**URL**: <{post.get('url', 'N/A')}>  ")
-        output.append("\n> ### Summary")
+        output.append("\n>**Summary**")
         output.append(f"> {post.get('summary', 'N/A')}")
         output.append("\n**Keywords**: " + post.get('seo_keywords', 'N/A'))
         output.append("**Meta Keywords**: " + post.get('seo_meta_keywords', 'N/A') + "  ")
 
-        # --- UPDATED: Format headings for Markdown output ---
-        headings_list = post.get('headings', [])
+        # --- CORRECTED: Handle the headings list as a string or a list ---
+        headings_data = post.get('headings', '[]')
+        if isinstance(headings_data, str) and headings_data:
+            print(f"Got headings data: {headings_data}")
+            try:
+                headings_list = [json.loads(idx.replace("'", '"')) for idx in [headings_data]][0]
+                # headings_list = json.loads(headings_data)
+                print(f"Got a list: {headings_list}")
+            except json.JSONDecodeError:
+                headings_list = []
+                print(f"Exception")
+        else:
+            headings_list = headings_data
+
         if headings_list:
-            output.append("\n#### Headings")
+            output.append("\n**Headings**")
             for heading in headings_list:
-                # Use the tag to determine Markdown heading level
-                md_tag = '#' * int(heading['tag'][1])
-                output.append(f"{md_tag} {heading['text']}")
+                try:
+                    md_tag = '#' * int(heading['tag'][1])
+                    output.append(f"{md_tag} {heading['text']}")
+                except (IndexError, ValueError):
+                    output.append(f"- {heading.get('text', 'N/A')}")
         
         # --- NEW: Add funnel stage to Markdown output ---
         output.append(f"**Funnel Stage**: {post.get('funnel_stage', 'N/A')}")

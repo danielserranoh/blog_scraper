@@ -109,7 +109,7 @@
       "date_selector": "time[datetime]",
       "date_strip_prefix": null,
       "content_selector": "article.blog--detail",
-      "content_filter_selector": null,
+      "content_filter_selector": ".engagement-panel",
       "next_page_selector": "li.pager__item--next a"
     }
   ]

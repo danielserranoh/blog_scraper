@@ -215,6 +215,7 @@ class GeminiAPIConnector:
                             except json.JSONDecodeError: pass
 
                     if parsed_json:
+                        # print(parsed_json)
                         post['summary'] = parsed_json.get('summary', 'N/A')
                         post['seo_keywords'] = ', '.join(parsed_json.get('seo_keywords', []))
                         post['funnel_stage'] = parsed_json.get('funnel_stage', 'N/A') # <-- NEW: Get funnel_stage from response

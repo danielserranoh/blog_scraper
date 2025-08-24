@@ -27,20 +27,24 @@ def _get_existing_urls(competitor_name):
     scraped post URLs.
     """
     existing_urls = set()
-    state_filepath = os.path.join('state', competitor_name, f"{competitor_name}_state.csv")
+    
+    raw_data_folder = os.path.join('data', 'raw', competitor_name)
 
-    if os.path.exists(state_filepath):
+    if os.path.exists(raw_data_folder):
         try:
-            with open(state_filepath, mode='r', newline='', encoding='utf-8-sig') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    if 'url' in row and row['url']:
-                        existing_urls.add(row['url'])
-            logger.info(f"Found {len(existing_urls)} existing URLs in state file: {state_filepath}.")
+            for filename in os.listdir(raw_data_folder):
+                if filename.endswith('.csv'):
+                    filepath = os.path.join(raw_data_folder, filename)
+                    with open(filepath, mode='r', newline='', encoding='utf-8-sig') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            if 'url' in row and row['url']:
+                                existing_urls.add(row['url'])
+            logger.info(f"Found {len(existing_urls)} existing URLs in raw data files for '{competitor_name}'.")
         except Exception as e:
-            logger.error(f"Could not read state file at {state_filepath}: {e}")
+            logger.error(f"❌ Could not read raw data files in {raw_data_folder}: {e}")
     else:
-        logger.info("No previous state file found. Starting a fresh scrape.")
+        logger.info("🗂️ No previous raw data files found. Starting a fresh scrape.")
 
     return existing_urls
 
@@ -105,20 +109,6 @@ def _extract_post_title(soup, config):
         return title_element.text.strip()
         
     return 'No Title Found'
-
-def _extract_headings(soup):
-    """
-    Extracts all headings (h1, h2, h3) from the BeautifulSoup object.
-    """
-    headings = []
-    # Find all heading tags
-    heading_tags = soup.find_all(['h1', 'h2', 'h3'])
-    for tag in heading_tags:
-        headings.append({
-            'tag': tag.name,
-            'text': tag.get_text(strip=True)
-        })
-    return headings
     
 def _extract_post_content(soup, config):
     """
@@ -139,7 +129,51 @@ def _extract_post_content(soup, config):
         if element_to_remove:
             element_to_remove.decompose()
             
-    return ' '.join(content_container.get_text(separator=' ', strip=True).split())
+    #return ' '.join(content_container.get_text(separator=' ', strip=True).split())
+    return content_container
+
+def _extract_headings(soup):
+    """
+    Extracts all headings (h1, h2, h3) from the BeautifulSoup object.
+    """
+    headings = []
+    heading_tags = soup.find_all(['h1', 'h2', 'h3'])
+    for tag in heading_tags:
+        headings.append({
+            'tag': tag.name,
+            'text': tag.get_text(strip=True)
+        })
+    return headings
+
+def _extract_json_ld(soup):
+    """
+    Scrapes an blog post article for all JSON-LD schemas.
+
+    Args:
+        soup: The content of the webpage to scrape in a bs4 object.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary is a JSON-LD schema found on the page.
+    """
+
+    # 1. Find all script tags with the specific JSON-LD type
+    schemas = []
+    script_tags = soup.find_all('script', type='application/ld+json')
+    
+    # 2. Extract and parse the JSON data from each tag
+    for tag in script_tags:
+        try:
+            # The data is inside the tag as text content
+            data = json.loads(tag.string)
+            schemas.append(data)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from a script tag: {e}")
+        except AttributeError:
+            # This handles cases where a script tag might not have .string content
+            continue
+
+    return schemas
+
 
 
 async def _get_post_details(client, base_url, post_url_path, config, stats): 
@@ -153,7 +187,6 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
         response = await client.get(full_url, follow_redirects=True) 
         response.raise_for_status()
 
-        # --- NEW: Check if we were redirected back to a main page ---
         if not _validate_post_url(response, full_url, config, stats):
             return None
 
@@ -161,24 +194,28 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
 
         pub_date = _extract_post_publication_date(soup, config, full_url)
         title = _extract_post_title(soup, config)
-        heading_list = _extract_headings(soup)
-        content_text = _extract_post_content(soup, config)
+        content_soup = _extract_post_content(soup, config)
+        content_text = ' '.join(content_soup.get_text(separator=' ', strip=True).split())
+        #content_text = _extract_post_content(soup, config)
         keywords_meta = soup.find('meta', {'name': 'keywords'})
         seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'       
+        headings_list = _extract_headings(content_soup)
+        schemas_list = _extract_json_ld(soup)
 
         return {
             'title': title,
             'url': full_url,
             'publication_date': pub_date.strftime('%Y-%m-%d') if pub_date else 'N/A',
-            'headings': heading_list if heading_list else 'N/A',
             'content': content_text if content_text else 'N/A',
             'summary': 'N/A',
             'seo_keywords': 'N/A',
-            'seo_meta_keywords': seo_meta_keywords
+            'seo_meta_keywords': seo_meta_keywords,
+            'headings': headings_list,
+            'schemas': schemas_list
         }
 
     except httpx.RequestError as e: 
-        logger.error(f"Error fetching post details from {full_url}: {e}")
+        logger.error(f"Error fetching post details from {full_url} : {e}")
         stats.errors += 1
         stats.failed_urls.append(full_url)
         return None

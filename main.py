@@ -46,7 +46,9 @@ def main():
         description="Scrape blog posts from competitor websites.",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    # --- UPDATED: Redefine the days argument to be part of the --scrape flag ---
     parser.add_argument('--scrape', nargs='?', type=int, const=30, default=None, metavar='DAYS', help='Scrape posts from the last N days (default: 30).')
+    
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--scrape-all', action='store_true', help='Scrape all posts.')
     group.add_argument('--check-job', '-j', action='store_true', help='Check status of a batch job.')
@@ -59,14 +61,27 @@ def main():
     args = parser.parse_args()
 
     # Argument validation
-    if args.check_job and (args.days != 30 or args.all or args.enrich):
+    if args.check_job and (args.scrape is not None or args.scrape_all or args.enrich):
         logging.error("--check-job cannot be used with scraping-specific arguments.")
         return
-    if args.enrich and (args.days != 30 or args.all):
+    if args.enrich and (args.scrape is not None or args.scrape_all):
         logging.error("--enrich cannot be used with --days or --all.")
         return
+    if args.scrape_all and args.scrape is not None:
+        logging.error("--scrape-all cannot be used with --scrape.")
+        return
 
-        
+    # Set the 'days' for the orchestrator to use
+    if args.scrape is None and not args.scrape_all and not args.check_job and not args.enrich and not args.enrich_raw and not args.export:
+        args.days = 30 # Default behavior if no flag is provided
+        args.all = False
+    elif args.scrape_all:
+        args.days = None
+        args.all = True
+    else:
+        args.days = args.scrape
+        args.all = False
+
     # Start the asynchronous pipeline
     asyncio.run(run_pipeline(args))
 

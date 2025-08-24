@@ -43,3 +43,7 @@ class StateManager:
     def load_processed_data(self, competitor_name):
         """Loads all processed data."""
         return self.adapter.read(competitor_name, file_type='processed')
+    
+    def load_raw_urls(self, competitor_name):
+        """Loads all post URLs from the raw data files."""
+        return self.adapter.read_urls(competitor_name, file_type='raw')

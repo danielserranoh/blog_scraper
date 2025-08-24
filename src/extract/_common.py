@@ -21,32 +21,6 @@ class ScrapeStats:
         self.errors = 0
         self.failed_urls = []
 
-def _get_existing_urls(competitor_name):
-    """
-    Reads the canonical state CSV file to get a list of all previously
-    scraped post URLs.
-    """
-    existing_urls = set()
-    
-    raw_data_folder = os.path.join('data', 'raw', competitor_name)
-
-    if os.path.exists(raw_data_folder):
-        try:
-            for filename in os.listdir(raw_data_folder):
-                if filename.endswith('.csv'):
-                    filepath = os.path.join(raw_data_folder, filename)
-                    with open(filepath, mode='r', newline='', encoding='utf-8-sig') as csvfile:
-                        reader = csv.DictReader(csvfile)
-                        for row in reader:
-                            if 'url' in row and row['url']:
-                                existing_urls.add(row['url'])
-            logger.info(f"Found {len(existing_urls)} existing URLs in raw data files for '{competitor_name}'.")
-        except Exception as e:
-            logger.error(f"❌ Could not read raw data files in {raw_data_folder}: {e}")
-    else:
-        logger.info("🗂️ No previous raw data files found. Starting a fresh scrape.")
-
-    return existing_urls
 
 def _validate_post_url(response, original_url, config, stats):
     """

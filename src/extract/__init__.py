@@ -15,7 +15,7 @@ STRUCTURE_MAP = {
     "single_page": ".blog_patterns.single_page",
 }
 
-async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size=10):
+async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size=10, existing_urls=set()):
     """
     A router that dynamically dispatches to the correct structure scraper
     based on the configured pattern.
@@ -35,7 +35,7 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
         scraper_module = importlib.import_module(module_path, package='src.extract')
         
         # Each structure scraper will handle its own logic, including pagination
-        async for batch in scraper_module.scrape(config, days, scrape_all, batch_size, stats):
+        async for batch in scraper_module.scrape(config, days, scrape_all, batch_size, stats, existing_urls):
             yield batch
 
     except ImportError:

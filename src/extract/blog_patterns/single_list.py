@@ -8,14 +8,13 @@ from .._common import _get_existing_urls, _get_post_details, get_next_page_url, 
 
 logger = logging.getLogger(__name__)
 
-async def scrape(config, days, scrape_all, batch_size, stats):
+async def scrape(config, days, scrape_all, batch_size, stats, existing_urls):
     """
     Scrapes blogs that have a single, paginated list of posts, with a robust
     check for the end of pagination.
     """
     posts_to_process = []
     base_url = config['base_url']
-    existing_urls = _get_existing_urls(config['name'])
     processed_in_run_urls = set()
     
     pagination_config = config.get('pagination_pattern')

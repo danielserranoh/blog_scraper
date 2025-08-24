@@ -26,8 +26,12 @@ class ScraperManager:
         Scrapes new posts, saves the raw output, and submits for enrichment.
         """
         name = competitor['name']
+
+        # <--- ADDED: Load all existing URLs once at the start. --->
+        existing_urls = self.state_manager.load_raw_urls(name)
+
         all_posts = []
-        async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all):
+        async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all, existing_urls):
             all_posts.extend(batch)
         if not all_posts: 
             return

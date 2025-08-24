@@ -82,3 +82,29 @@ class CsvAdapter(BaseAdapter):
         
         logger.info(f"Read {len(posts)} posts from the '{file_type}' directory for '{competitor_name}'.")
         return posts
+    
+    
+    def read_urls(self, competitor_name, file_type):
+        """
+        Reads all post URLs from all CSV files in a specific data directory.
+        """
+        input_folder = os.path.join('data', file_type, competitor_name)
+        urls = set()
+        
+        if not os.path.isdir(input_folder):
+            return urls
+        
+        for filename in os.listdir(input_folder):
+            if filename.endswith('.csv'):
+                filepath = os.path.join(input_folder, filename)
+                try:
+                    with open(filepath, mode='r', newline='', encoding='utf-8-sig') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            if 'url' in row and row['url']:
+                                urls.add(row['url'])
+                except Exception as e:
+                    logger.error(f"Could not read URLs from file {filepath}: {e}")
+        
+        logger.info(f"Found {len(urls)} existing URLs in the '{file_type}' directory for '{competitor_name}'.")
+        return urls

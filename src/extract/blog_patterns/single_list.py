@@ -4,7 +4,7 @@ import httpx
 import asyncio
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from .._common import _get_existing_urls, _get_post_details, get_next_page_url, ScrapeStats
+from .._common import _get_post_details, get_next_page_url, ScrapeStats
 
 logger = logging.getLogger(__name__)
 

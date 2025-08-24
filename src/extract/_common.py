@@ -167,7 +167,7 @@ def _extract_json_ld(soup):
             data = json.loads(tag.string)
             schemas.append(data)
         except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from a script tag: {e}")
+            logger.error(f"Error decoding JSON from a script tag: {e}")
         except AttributeError:
             # This handles cases where a script tag might not have .string content
             continue

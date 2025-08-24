@@ -35,13 +35,23 @@ class CsvAdapter(BaseAdapter):
             return None
 
         try:
-            # --- UPDATED: Added a new field for 'funnel_stage' ---
             fieldnames = ['title', 'publication_date', 'url', 'funnel_stage', 'seo_keywords', 'summary', 'headings', 'schemas', 'seo_meta_keywords', 'content']
             
+            posts_to_write = []
+            for post in posts:
+                for field in ['headings', 'schemas']:
+                    if field in post and post[field]:
+                        # Convert the list of dictionaries to a JSON string
+                        post[field] = json.dumps(post[field])
+                    else:
+                        # Save as an empty JSON array if the field is missing or empty
+                        post[field] = '[]'
+                posts_to_write.append(post)
+
             with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
                 writer.writeheader()
-                writer.writerows(posts)
+                writer.writerows(posts_to_write)
             
             logger.info(f"Successfully saved {len(posts)} posts to: {filepath}")
             return filepath

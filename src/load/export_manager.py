@@ -83,7 +83,17 @@ class ExportManager:
         if not all_posts_to_export:
             logger.warning("‼️ No data found to export.")
             return
-            
+
+        # <--- ADDED: Deserialization step for headings and schemas --->
+        for post in all_posts_to_export:
+            for field in ['headings', 'schemas']:
+                if post.get(field):
+                    try:
+                        post[field] = json.loads(post[field])
+                    except json.JSONDecodeError:
+                        logger.warning(f"Could not parse JSON for field '{field}' in post '{post.get('url')}'. Setting to empty list.")
+                        post[field] = []
+
         # --- NEW: Deduplicate and merge posts before exporting ---
         final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)
 

@@ -43,6 +43,13 @@ def _format_as_txt(posts):
             
         # --- NEW: Add funnel stage to text output ---
         output.append(f"Funnel Stage: {post.get('funnel_stage', 'N/A')}")
+        
+        # --- NEW: Add schemas to text output ---
+        schemas_list = post.get('schemas', [])
+        if schemas_list:
+            output.append(f"Schemas Found: {len(schemas_list)}")
+            for schema in schemas_list:
+                output.append(f"  - @type: {schema.get('@type', 'N/A')}")
 
         output.append("-" * 40)
     return "\n".join(output)
@@ -65,20 +72,8 @@ def _format_as_md(posts):
         output.append("\n**Keywords**: " + post.get('seo_keywords', 'N/A'))
         output.append("**Meta Keywords**: " + post.get('seo_meta_keywords', 'N/A') + "  ")
 
-        # --- CORRECTED: Handle the headings list as a string or a list ---
-        headings_data = post.get('headings', '[]')
-        if isinstance(headings_data, str) and headings_data:
-            print(f"Got headings data: {headings_data}")
-            try:
-                headings_list = [json.loads(idx.replace("'", '"')) for idx in [headings_data]][0]
-                # headings_list = json.loads(headings_data)
-                print(f"Got a list: {headings_list}")
-            except json.JSONDecodeError:
-                headings_list = []
-                print(f"Exception")
-        else:
-            headings_list = headings_data
-
+        # --- UPDATED: Simplified headings logic. The ExportManager now handles parsing. ---
+        headings_list = post.get('headings', [])
         if headings_list:
             output.append("\n**Headings**")
             for heading in headings_list:
@@ -90,6 +85,14 @@ def _format_as_md(posts):
         
         # --- NEW: Add funnel stage to Markdown output ---
         output.append(f"**Funnel Stage**: {post.get('funnel_stage', 'N/A')}")
+        
+        # --- NEW: Add schemas to Markdown output ---
+        schemas_list = post.get('schemas', [])
+        if schemas_list:
+            output.append("\n**JSON-LD Schemas**")
+            output.append("```json")
+            output.append(json.dumps(schemas_list, indent=2))
+            output.append("```")
 
         output.append("\n---")
     return "\n".join(output)
@@ -101,8 +104,17 @@ def _format_as_csv(posts):
     
     # Use io.StringIO to build the CSV in memory
     output = io.StringIO()
-    # Use the keys from the first post as the header
-    fieldnames = list(posts[0].keys())
+    
+    # A set to dynamically gather all possible fieldnames from the posts
+    all_fieldnames = set()
+    for post in posts:
+        all_fieldnames.update(post.keys())
+        
+    fieldnames = list(all_fieldnames)
+    
+    # Sort for consistent column order
+    fieldnames.sort()
+
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
     
     writer.writeheader()

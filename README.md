@@ -5,7 +5,7 @@ This Python project is an advanced ETL (Extract, Transform, Load) pipeline desig
 
 The project is built on a modular, **manager-based architecture** that centralizes key functionality into dedicated components. This approach ensures the codebase is easy to maintain, scale, and extend. It also features a robust **dual API strategy** that intelligently switches between a high-performance "live" mode and a cost-effective "batch" mode for data enrichment.
 
-Key architectural features include:
+**Key architectural features include:**
 * **Centralized Configuration**: All site-specific logic and application settings are defined in a single location, making the core code generic and data-driven.
 * **Single API Gateway**: All interactions with the Gemini API are funneled through a single, dedicated class, simplifying API management and updates.
 * **Resilient Workflow**: The pipeline is designed to be safely resumed after a failure, ensuring no work is ever lost.
@@ -32,42 +32,36 @@ Key architectural features include:
 
     A `performance_log.json` file will be created automatically in the `config/` directory to store data for the time estimation feature.
 
-## How to Run the Scraper
+## How to Run the Scraper (New CLI)
 
-The script is run from the command line and offers several flags to control its behavior.
+The script now uses the `click` library for a more streamlined command-line interface. All commands are now subcommands of the main `main.py` entry point.
 
-* **Default Scrape (last 30 days):**
-    `python main.py --scrape`
+### Running Commands
 
-* **Scrape Posts from a Specific Number of Days:**
-    `python main.py --scrape 60`
+To run a command, use the following format:
+`python main.py <command> [options]`
+
+* **Scrape Posts (last 30 days):**
+    `python main.py scrape --competitor "terminalfour"`
 
 * **Scrape All Posts for a Competitor:**
-    `python main.py --scrape-all --competitor "squiz"`
+    `python main.py scrape --all --competitor "squiz"`
 
-* **Enrich Existing Data:**
-    Finds the latest state file for a competitor and enriches any posts with missing summaries or keywords.
-    `python main.py --enrich --competitor "modern campus"`
+* **Enrich Raw Data for a Competitor:**
+    `python main.py enrich --raw --competitor "modern campus"`
 
-* **Enrich Raw Data:**
-    Finds the latest raw data for a competitor and triggers the enrichment process for it.
-    `python main.py --enrich-raw --competitor "modern campus"`
+* **Check the Status of Pending Batch Jobs:**
+    `python main.py check-job --competitor "modern campus"`
 
-* **Check a Batch Job:**
-    Checks the status of any pending batch jobs for one or all competitors.
-    `python main.py --check-job --competitor "modern campus"`
-
-* **Export Data:**
-    Exports the latest scraped data for one or all competitors to a specified format. This command first checks for and processes any completed batch jobs to ensure the data is up-to-date.
-    `python main.py --export txt --competitor "squiz"`
-    `python main.py -e md`
+* **Export Data to a Markdown File:**
+    `python main.py export --format md --competitor "squiz"`
 
 ## Project Workflow Breakdown
 
 The application is architected with a clean separation between the command-line interface and the core ETL pipeline, which is now managed by specialized classes.
 
 #### 1. Entrypoint (`main.py`)
-This script's sole responsibility is to handle the command-line interface. It uses `argparse` to define and parse arguments and then calls the `run_pipeline` function in the orchestrator.
+This script now uses the `click` library to handle the command-line interface. It defines the available commands and their options in a clean, declarative way, and then calls the `run_pipeline` function in the orchestrator.
 
 #### 2. The Orchestrator (`src/orchestrator.py`)
 This is the "brains" of the application. It acts as a high-level **conductor**, loading all necessary configurations and delegating control to the appropriate manager class for each workflow (scrape, enrich, check job, or export). It contains no low-level implementation logic.
@@ -80,7 +74,7 @@ This is the "brains" of the application. It acts as a high-level **conductor**, 
 
 #### 4. Service and Utility Layer
 * **`src/api_connector.py`**: This is the single, centralized gateway to the Gemini API. All interactions, including live and batch calls, file uploads, and job management, are handled here.
-* **`src/state_management/`**: Uses a flexible Adapter Pattern to save the primary data state to a canonical CSV file.
+* **`src/state_management/`**: This now uses a flexible Adapter Pattern to save the primary data state to **JSON files**, which simplifies data handling by eliminating the need to serialize and deserialize complex data structures.
 * **`src/config_loader.py`**: The single source for all application and competitor configurations.
 
 ## Extending the Project

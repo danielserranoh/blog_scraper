@@ -41,26 +41,28 @@ For future development, we have identified other common patterns that could be i
 
 ***
 
-## Process
-The command `python main.py --scrape-all -c "oho"` triggers a chain of functions that orchestrate the entire scrape and enrichment pipeline. Here is a step-by-step list of the primary functions that are called in order:
+## Process (New CLI)
+The command `python main.py scrape --competitor "oho"` triggers a chain of functions that orchestrate the entire scrape and enrichment pipeline. The `main.py` file now uses the `click` library to define a clear, command-based workflow.
 
-1.  **`main.py -> main()`**: The application starts here. It sets up the logger, loads environment variables, and parses the command-line arguments, including `--scrape-all` and `--competitor "oho"`.
-2.  **`main.py -> asyncio.run(run_pipeline(args))`**: This function starts the asynchronous event loop and passes control to the main orchestrator function.
-3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `--scrape-all` flag, calls the `ScraperManager` to begin the scraping workflow.
-4.  **`scraper_manager.py -> run_scrape_and_submit()`**: This method orchestrates the extraction phase. It calls the `extract_posts_in_batches` function to start the scraping process, and then passes the results to the `EnrichmentManager` and the `StateManager` that stores the results in the data/raw/{competitor}/ folder
+Here is a step-by-step list of the primary functions that are called in order:
+
+1.  **`main.py -> cli()`**: The application starts here. The `click` library parses the command-line arguments and passes control to the specified command function, such as `scrape`.
+2.  **`main.py -> scrape()`**: This function prepares the arguments into a format that the `run_pipeline` function can use and then starts the asynchronous event loop by calling `asyncio.run(run_pipeline(args))`.
+3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `scrape` flag, calls the `ScraperManager` to begin the scraping workflow.
+4.  **`scraper_manager.py -> run_scrape_and_submit()`**: This method orchestrates the extraction phase. It calls the `extract_posts_in_batches` function to start the scraping process, and then passes the results to the `EnrichmentManager` and the `StateManager` that stores the results in the `data/raw/{competitor}/` folder.
 5.  **`extract/__init__.py -> extract_posts_in_batches()`**: This is a router function that, based on the competitor's configuration, imports and calls the correct scraping pattern module. For "oho," it calls the `multi_category` scraper.
 6.  **`multi_category.py -> scrape()`**: This function is the core of the scraper for "oho." It uses `httpx` to make asynchronous network requests to the blog's category pages. It then extracts the post links from the HTML and, for each link, creates an asynchronous task to get the post's details.
-7.  **`_common.py -> _get_post_details()`**: This is a low-level function that performs the actual scraping of an individual post. It uses `httpx` to get the post's content and `BeautifulSoup` to parse the HTML and extract the title, date, content, headings and schema.
+7.  **`_common.py -> _get_post_details()`**: This is a low-level function that performs the actual scraping of an individual post. It uses `httpx` to get the post's content and `BeautifulSoup` to parse the HTML and extract the title, date, content, and headings.
 8.  **`scraper_manager.py -> EnrichmentManager.enrich_posts()`**: After a batch of posts has been scraped, the `ScraperManager` saves the raw data and then calls the `enrich_posts` method to begin the transformation phase.
 9.  **`enrichment_manager.py -> enrich_posts()`**: This method determines whether to use live or batch mode. Since the `--scrape-all` flag is used, it will likely choose batch mode and call the `BatchJobManager`.
 10. **`batch_manager.py -> submit_new_jobs()`**: This method prepares the posts for the Gemini API. It chunks the posts, creates a JSONL file, and calls the `GeminiAPIConnector` to submit the batch job.
 11. **`api_connector.py -> create_batch_job()`**: This function is the final step. It uploads the JSONL file to the Gemini API and submits the batch job for processing, which is when the enrichment actually happens on the server side.
 
-The command `python main.py --check-job` triggers a chain of functions that orchestrate the batch job-checking workflow. Here is a step-by-step list of the primary functions that are called in order:
+The command `python main.py check-job` triggers a chain of functions that orchestrate the batch job-checking workflow. Here is a step-by-step list of the primary functions that are called in order:
 
-1.  **`main.py -> main()`**: The application starts here. It sets up the logger, loads environment variables, and parses the command-line arguments, including `--check-job`.
-2.  **`main.py -> asyncio.run(run_pipeline(args))`**: This function starts the asynchronous event loop and passes control to the main orchestrator function
-3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `--check-job` flag, calls the `check_and_load_results` method on the `BatchJobManager` for each competitor
+1.  **`main.py -> cli()`**: The application starts here. The `click` library parses the command-line arguments and passes control to the `check_job` function.
+2.  **`main.py -> check_job()`**: This function prepares the arguments into a `SimpleNamespace` object and then starts the asynchronous event loop by calling `asyncio.run(run_pipeline(args))`.
+3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `--check-job` flag, calls the `check_and_load_results` method on the `BatchJobManager` for each competitor.
 4.  **`batch_manager.py -> check_and_load_results()`**: This method orchestrates the job-checking process. It first reads the `pending_jobs.json` file to get a list of pending jobs, and then it calls the `_poll_job_statuses` method to get the status of each job.
 5.  **`batch_manager.py -> _poll_job_statuses()`**: This function loops through the list of pending jobs and, for each job, calls the `check_batch_job` method on the `GeminiAPIConnector` to get the job's current status.
 6.  **`api_connector.py -> check_batch_job()`**: This is the final step. It makes a direct call to the Gemini API to get the status of a specific batch job.

@@ -281,9 +281,8 @@ class GeminiAPIConnector:
                 
                 request_payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"response_mime_type": "application/json"},
-                    "metadata": metadata # <--- Add the metadata here
+                    "generationConfig": {"response_mime_type": "application/json"}
                 }
-                json_line = {"key": f"post-{i}", "request": request_payload}
+                json_line = {"key": f"post-{i}", "request": request_payload, "metadata": metadata}
                 jsonl_lines.append(json.dumps(json_line))
         return "\n".join(jsonl_lines)

@@ -5,10 +5,10 @@
     "batch": "gemini-2.0-flash-lite"
   },
   "storage": {
-    "adapter": "csv"
+    "adapter": "json"
   },
   "processed_data": {
-    "adapter": "csv"
+    "adapter": "json"
   },
   "google_sheets": {
     "spreadsheet_name": "Blog Scraper Export"

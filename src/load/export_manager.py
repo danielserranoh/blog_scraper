@@ -3,8 +3,8 @@
 
 import os
 import csv
-import json
 import logging
+import json
 from . import exporters
 from .file_saver import save_export_file
 
@@ -70,38 +70,23 @@ class ExportManager:
                 logger.warning(f"No processed data found for '{competitor_name}'. Skipping.")
                 continue
             
-            # Read all CSVs in the processed folder for that competitor
+            # <--- MODIFIED: Use the JSON-based read, which returns native objects --->
+            # The previous CSV-specific deserialization loop is now removed.
+            # We now read all files from the processed directory.
             for filename in os.listdir(processed_folder):
-                if filename.endswith('.csv'):
+                if filename.endswith('.json'):
                     filepath = os.path.join(processed_folder, filename)
                     logger.info(f"Reading data for '{competitor_name}' from: {filename}")
-                    with open(filepath, mode='r', newline='', encoding='utf-8-sig') as f:
-                        reader = csv.DictReader(f)
-                        for post in reader:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        for post in data:
                             post['competitor'] = competitor_name
                             all_posts_to_export.append(post)
 
         if not all_posts_to_export:
             logger.warning("‼️ No data found to export.")
             return
-
-        # <--- ADDED: Deserialization step for headings and schemas --->
-        for post in all_posts_to_export:
-            for field in ['headings', 'schemas']:
-                 # Ensure the field exists and is not an empty string before attempting to parse
-                if post.get(field, '').strip():
-                    #print(f"Para el campo {field}, se ha recuperado del csv el valor {post[field]} del tipo {type(post[field])}")
-                    try:
-                        post[field] = json.loads(post[field].replace("'", '"'))
-                        print(post[field])
-                    except json.JSONDecodeError:
-                        logger.warning(f"Could not parse JSON for field '{field}' in post '{post.get('url')}'. Setting to empty list.")
-                        post[field] = []
-                else:
-                    # If the field is an empty string, set it to an empty list
-                    post[field] = []
-
-        # --- NEW: Deduplicate and merge posts before exporting ---
+            
         final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)
 
         try:

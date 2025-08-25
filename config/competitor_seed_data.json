@@ -111,24 +111,6 @@
       "content_selector": "article.blog--detail",
       "content_filter_selector": ".engagement-panel",
       "next_page_selector": "li.pager__item--next a"
-    },
-    {
-      "name": "mighty citizen",
-      "base_url": "https://www.mightycitizen.com",
-      "structure_pattern": "single_list",
-      "pagination_pattern": {
-        "type": "numeric_query",
-        "selector": "&page="
-      },
-      "category_paths": [
-        "https://www.mightycitizen.com/insights/results?q=&industry%5B%5D=education&type%5B%5D=articles&page=0"
-      ],
-      "post_list_selector": "div.wpgood-posts-grid",
-      "date_selector": "p.meta",
-      "date_strip_prefix": null,
-      "content_selector": "main#main",
-      "content_filter_selector": "div.callout",
-      "next_page_selector": "li.pagination-next a"
     }
   ]
 }

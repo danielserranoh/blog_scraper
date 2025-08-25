@@ -2,6 +2,7 @@
 # This module contains the centralized manager for all data persistence.
 
 import logging
+from .json_adapter import JsonAdapter
 from .csv_adapter import CsvAdapter
 from .base_adapter import BaseAdapter
 
@@ -22,6 +23,8 @@ class StateManager:
         """
         if adapter_name == "csv":
             return CsvAdapter()
+        elif adapter_name == "json":
+            return JsonAdapter()
         # Add a new adapter here when you need to switch storage
         # elif adapter_name == "gsheets":
         #    return GoogleSheetsAdapter()

@@ -199,16 +199,16 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
         pub_date = _extract_post_publication_date(soup, config, full_url)
         title = _extract_post_title(soup, config)
         
-        # --- NEW: Extract the headings form the HTML where the content lies instead of all the page to improve accuracy
-        content_container = _extract_post_content(soup, config)
-
-        if isinstance(content_container, str):
-            print(f"Failed extracting the content of post {post_url_path}")
-            content_text = 'N/A'
-            headings_list = _extract_headings(soup)
-        else:    
+        # --- Extract the post content and the headings form the HTML where the content lies instead of all the page to improve accuracy
+        # --- NEW: Use a try/except block to handle missing content selector ---
+        try:
+            content_container = _extract_post_content(soup, config)
             content_text = ' '.join(content_container.get_text(separator=' ', strip=True).split())
             headings_list = _extract_headings(content_container)
+        except AttributeError:
+            logger.warning(f"Could not find a content container for post: {full_url}")
+            content_text = 'N/A'
+            headings_list = []
         
         # --- NEW: Extract JSON-LD schemas ---
         schemas_list = _extract_json_ld(soup)

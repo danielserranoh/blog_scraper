@@ -3,6 +3,7 @@
 
 import os
 import csv
+import json
 import logging
 from . import exporters
 from .file_saver import save_export_file

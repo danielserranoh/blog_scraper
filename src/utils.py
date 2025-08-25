@@ -138,7 +138,7 @@ def update_performance_log(job_duration_seconds, num_posts):
 
         with open('config/performance_log.json', 'w') as f:
             json.dump(log, f, indent=4)
-        logger.info("Performance log updated.")
+        logger.debug("Performance log updated.")
 
     except (IOError, TypeError) as e:
         logger.warning(f"Could not update performance log: {e}")

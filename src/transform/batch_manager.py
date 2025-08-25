@@ -72,7 +72,7 @@ class BatchJobManager:
         source_raw_filepath = None
 
         if not os.path.exists(jobs_file_path):
-            logger.info(f" ⚠️ No pending jobs found for '{name}'.")
+            logger.info(f" ℹ️ No pending jobs found for '{name}'.")
             return
             
         try:

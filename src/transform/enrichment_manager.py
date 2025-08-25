@@ -104,5 +104,6 @@ class EnrichmentManager:
                 posts, 
                 batch_model, 
                 app_config,
-                all_posts_from_file # The source data is the raw data
+                # --- FIX: The `source_raw_filepath` argument is a string, not the list of all posts. ---
+                all_posts_from_file[0]['url']
             )

@@ -88,12 +88,18 @@ class ExportManager:
         # <--- ADDED: Deserialization step for headings and schemas --->
         for post in all_posts_to_export:
             for field in ['headings', 'schemas']:
-                if post.get(field):
+                 # Ensure the field exists and is not an empty string before attempting to parse
+                if post.get(field, '').strip():
+                    #print(f"Para el campo {field}, se ha recuperado del csv el valor {post[field]} del tipo {type(post[field])}")
                     try:
-                        post[field] = json.loads(post[field])
+                        post[field] = json.loads(post[field].replace("'", '"'))
+                        print(post[field])
                     except json.JSONDecodeError:
                         logger.warning(f"Could not parse JSON for field '{field}' in post '{post.get('url')}'. Setting to empty list.")
                         post[field] = []
+                else:
+                    # If the field is an empty string, set it to an empty list
+                    post[field] = []
 
         # --- NEW: Deduplicate and merge posts before exporting ---
         final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)

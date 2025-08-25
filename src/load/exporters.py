@@ -67,6 +67,7 @@ def _format_as_md(posts):
         output.append(f"## {post.get('title', 'N/A')}")
         output.append(f"**Date**: {post.get('publication_date', 'N/A')}  ")
         output.append(f"**URL**: <{post.get('url', 'N/A')}>  ")
+        output.append(f"**Funnel Stage**: {post.get('funnel_stage', 'N/A')}")
         output.append("\n>**Summary**")
         output.append(f"> {post.get('summary', 'N/A')}")
         output.append("\n**Keywords**: " + post.get('seo_keywords', 'N/A'))
@@ -82,9 +83,6 @@ def _format_as_md(posts):
                     output.append(f"{md_tag} {heading['text']}")
                 except (IndexError, ValueError):
                     output.append(f"- {heading.get('text', 'N/A')}")
-        
-        # --- NEW: Add funnel stage to Markdown output ---
-        output.append(f"**Funnel Stage**: {post.get('funnel_stage', 'N/A')}")
         
         # --- NEW: Add schemas to Markdown output ---
         schemas_list = post.get('schemas', [])

@@ -79,8 +79,8 @@ def _format_as_md(posts):
             output.append("\n**Headings**")
             for heading in headings_list:
                 try:
-                    #md_tag = '#' * int(heading['tag'].replace("h",""))
-                    md_tag = '#' * int(heading.get('tag').replace("h",""))
+                    md_tag = '#' * int(heading['tag'][1])
+                    #md_tag = '#' * int(heading.get('tag').replace("h",""))
                     output.append(f"{md_tag} {heading['text']}")
                 except (IndexError, ValueError):
                     output.append(f"- {heading.get('text', 'N/A')}")

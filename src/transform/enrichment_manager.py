@@ -32,7 +32,7 @@ class EnrichmentManager:
                 posts_to_enrich.append(post)
         return processed_posts, posts_to_enrich
 
-    async def run_enrichment_process(self, competitor, batch_threshold, live_model, batch_model, app_config):
+    async def run_enrichment_process(self, competitor, batch_threshold, live_model, batch_model, app_config, wait):
         """
         Discovers posts that require enrichment and submits them for processing.
         """
@@ -53,10 +53,11 @@ class EnrichmentManager:
             batch_threshold,
             live_model,
             batch_model,
-            app_config
+            app_config,
+            wait
         )
 
-    async def enrich_raw_data(self, competitor, batch_threshold, live_model, batch_model, app_config):
+    async def enrich_raw_data(self, competitor, batch_threshold, live_model, batch_model, app_config, wait):
         """
         Loads all raw data for a competitor and submits it for enrichment.
         This is a recovery method for failed scrapes.
@@ -77,11 +78,12 @@ class EnrichmentManager:
             batch_threshold,
             live_model,
             batch_model,
-            app_config
+            app_config,
+            wait
         )
 
 
-    async def enrich_posts(self, competitor, posts, all_posts_from_file, batch_threshold, live_model, batch_model, app_config):
+    async def enrich_posts(self, competitor, posts, all_posts_from_file, batch_threshold, live_model, batch_model, app_config, wait):
         """
         The central point for all post enrichment. It decides whether to use
         live or batch mode and then calls the appropriate manager.
@@ -104,6 +106,6 @@ class EnrichmentManager:
                 posts, 
                 batch_model, 
                 app_config,
-                # --- FIX: The `source_raw_filepath` argument is a string, not the list of all posts. ---
-                all_posts_from_file[0]['url']
+                all_posts_from_file[0]['url'],
+                wait
             )

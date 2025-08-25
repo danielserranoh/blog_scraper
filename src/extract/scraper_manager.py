@@ -22,7 +22,7 @@ class ScraperManager:
         self.enrichment_manager = EnrichmentManager(app_config)
         self.state_manager = StateManager(app_config)
     
-    async def run_scrape_and_submit(self, competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config):
+    async def run_scrape_and_submit(self, competitor, days_to_scrape, scrape_all, batch_threshold, live_model, batch_model, app_config, wait):
         """
         Scrapes new posts, saves the raw output, and submits for enrichment.
         """
@@ -54,5 +54,6 @@ class ScraperManager:
             batch_threshold,
             live_model,
             batch_model,
-            app_config
+            app_config,
+            wait
         )

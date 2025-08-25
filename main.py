@@ -56,6 +56,7 @@ def main():
     group.add_argument('--enrich-raw', action='store_true', help='Enrich posts from the raw data directory.')
     parser.add_argument('--competitor', '-c', type=str, help='Specify a single competitor.')
     parser.add_argument('--export', '-e',type=str, choices=['txt', 'json', 'md', 'gsheets', 'csv'], help='Export the latest data to a specified format (requires --competitor).')
+    parser.add_argument('--wait', action='store_true', help='Waits for batch jobs to complete before exiting.')
 
     
     args = parser.parse_args()

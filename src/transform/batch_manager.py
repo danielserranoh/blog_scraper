@@ -26,7 +26,7 @@ class BatchJobManager:
         self.api_connector = GeminiAPIConnector()
         self.state_manager = StateManager(app_config)
     
-    async def submit_new_jobs(self, competitor, posts, batch_model, app_config, source_raw_filepath):
+    async def submit_new_jobs(self, competitor, posts, batch_model, app_config, source_raw_filepath, wait):
         """
         Chunks posts, submits them as jobs, and renames files transactionally.
         """
@@ -59,7 +59,10 @@ class BatchJobManager:
 
         if job_tracking_list:
             self._save_pending_jobs(competitor_name, job_tracking_list, source_raw_filepath)
-            await self._prompt_to_wait_for_job(competitor, len(posts), app_config)
+            if wait:
+                await self.check_and_load_results(competitor, app_config)
+            else:
+                await self._prompt_to_wait_for_job(competitor, len(posts), app_config)
 
 
     async def check_and_load_results(self, competitor, app_config):

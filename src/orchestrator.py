@@ -52,18 +52,18 @@ async def run_pipeline(args):
         for competitor in competitors_to_process:
             await batch_manager.check_and_load_results(competitor, app_config)
             await enrichment_manager.run_enrichment_process(
-                competitor, batch_threshold, live_model, batch_model, app_config
+                competitor, batch_threshold, live_model, batch_model, app_config, args.wait
             )
     elif args.enrich_raw:
         logger.info("--- Raw data enrichment process ---")
         for competitor in competitors_to_process:
             await enrichment_manager.enrich_raw_data(
-                competitor, batch_threshold, live_model, batch_model, app_config
+                competitor, batch_threshold, live_model, batch_model, app_config, args.wait
             )
     else:
         for competitor in competitors_to_process:
             await scraper_manager.run_scrape_and_submit(
-                competitor, args.days, args.all, batch_threshold, live_model, batch_model, app_config
+                competitor, args.days, args.all, batch_threshold, live_model, batch_model, app_config, args.wait
             )
             
     if args.enrich:

@@ -16,7 +16,7 @@ class ExportManager:
     to user-facing files in various formats.
     """
 
-    def __init__(self):
+    def __init__(self, app_config):
         self.app_config = app_config
     
     def _get_post_richness_score(self, post):

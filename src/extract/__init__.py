@@ -33,7 +33,6 @@ async def extract_posts_in_batches(config, days=30, scrape_all=False, batch_size
     try:
         module_path = STRUCTURE_MAP[pattern]
         scraper_module = importlib.import_module(module_path, package=__name__)
-        
         # Each structure scraper will handle its own logic, including pagination
         async for batch in scraper_module.scrape(config, days, scrape_all, batch_size, stats, existing_urls):
             yield batch

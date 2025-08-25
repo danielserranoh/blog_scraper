@@ -47,7 +47,7 @@
       "date_strip_prefix": "Last updated:",
       "content_selector": "div.item-content",
       "content_filter_selector": null,
-      "next_page_selector": "a.page-link:-soup-contains('Next')"
+      "next_page_selector": "a.page-link:contains('Next')"
     },
     {
       "name": "squiz",

@@ -6,6 +6,7 @@ import logging
 from . import extract_posts_in_batches
 from src.state_management.state_manager import StateManager
 from src.transform.enrichment_manager import EnrichmentManager
+from src.extract._common import ScrapeStats
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,15 @@ class ScraperManager:
         Scrapes new posts, saves the raw output, and submits for enrichment.
         """
         name = competitor['name']
-
-        # <--- ADDED: Load all existing URLs once at the start. --->
+        
         existing_urls = self.state_manager.load_raw_urls(name)
-
+        
         all_posts = []
-        async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all, existing_urls):
+        
+        # <--- CORRECTED: Pass the correct arguments to extract_posts_in_batches --->
+        async for batch in extract_posts_in_batches(competitor, days_to_scrape, scrape_all, batch_threshold, existing_urls):
             all_posts.extend(batch)
+        
         if not all_posts: 
             return
 
@@ -46,7 +49,7 @@ class ScraperManager:
         # 2. Pass the posts to the EnrichmentManager for processing
         await self.enrichment_manager.enrich_posts(
             competitor,
-            all_posts, # <-- CORRECTED: Pass the list of posts, not the file path
+            all_posts,
             raw_filepath,
             batch_threshold,
             live_model,

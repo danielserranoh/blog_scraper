@@ -2,6 +2,7 @@
 # This file contains the logic for saving data to a state CSV file.
 
 import csv
+import json
 import os
 import logging
 from datetime import datetime
@@ -83,7 +84,7 @@ class CsvAdapter(BaseAdapter):
         logger.info(f"Read {len(posts)} posts from the '{file_type}' directory for '{competitor_name}'.")
         return posts
     
-    
+
     def read_urls(self, competitor_name, file_type):
         """
         Reads all post URLs from all CSV files in a specific data directory.

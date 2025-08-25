@@ -10,6 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil.parser import parse as dateparse
 from urllib.parse import urljoin
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,32 @@ class ScrapeStats:
         self.errors = 0
         self.failed_urls = []
 
+def _get_existing_urls(competitor_name):
+    """
+    Reads the canonical state CSV file to get a list of all previously
+    scraped post URLs.
+    """
+    existing_urls = set()
+    
+    raw_data_folder = os.path.join('data', 'raw', competitor_name)
+
+    if os.path.exists(raw_data_folder):
+        try:
+            for filename in os.listdir(raw_data_folder):
+                if filename.endswith('.csv'):
+                    filepath = os.path.join(raw_data_folder, filename)
+                    with open(filepath, mode='r', newline='', encoding='utf-8-sig') as csvfile:
+                        reader = csv.DictReader(csvfile)
+                        for row in reader:
+                            if 'url' in row and row['url']:
+                                existing_urls.add(row['url'])
+            logger.info(f"Found {len(existing_urls)} existing URLs in raw data files for '{competitor_name}'.")
+        except Exception as e:
+            logger.error(f"❌ Could not read raw data files in {raw_data_folder}: {e}")
+    else:
+        logger.info("🗂️ No previous raw data files found. Starting a fresh scrape.")
+
+    return existing_urls
 
 def _validate_post_url(response, original_url, config, stats):
     """
@@ -87,15 +114,19 @@ def _extract_post_title(soup, config):
 def _extract_post_content(soup, config):
     """
     Extracts and cleans the main blog post content from a page.
+    Returns a bs4 object
+    Returns an empty str if failed (can return the soup?)
     """
     content_selector = config.get('content_selector')
     content_filter_selector = config.get('content_filter_selector')
     
     if not content_selector:
+        logger.info(f"Couldn't find the content selector in the post")
         return ""
 
     content_container = soup.select_one(content_selector)
     if not content_container:
+        logger.info(f"Couldn't find the content container in the post")
         return ""
 
     if content_filter_selector:
@@ -141,13 +172,12 @@ def _extract_json_ld(soup):
             data = json.loads(tag.string)
             schemas.append(data)
         except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON from a script tag: {e}")
+            print(f"Error decoding JSON from a script tag: {e}")
         except AttributeError:
             # This handles cases where a script tag might not have .string content
             continue
 
     return schemas
-
 
 
 async def _get_post_details(client, base_url, post_url_path, config, stats): 
@@ -168,13 +198,23 @@ async def _get_post_details(client, base_url, post_url_path, config, stats):
 
         pub_date = _extract_post_publication_date(soup, config, full_url)
         title = _extract_post_title(soup, config)
-        content_soup = _extract_post_content(soup, config)
-        content_text = ' '.join(content_soup.get_text(separator=' ', strip=True).split())
-        #content_text = _extract_post_content(soup, config)
+        
+        # --- NEW: Extract the headings form the HTML where the content lies instead of all the page to improve accuracy
+        content_container = _extract_post_content(soup, config)
+
+        if isinstance(content_container, str):
+            print(f"Failed extracting the content of post {post_url_path}")
+            content_text = 'N/A'
+            headings_list = _extract_headings(soup)
+        else:    
+            content_text = ' '.join(content_container.get_text(separator=' ', strip=True).split())
+            headings_list = _extract_headings(content_container)
+        
+        # --- NEW: Extract JSON-LD schemas ---
+        schemas_list = _extract_json_ld(soup)
+        
         keywords_meta = soup.find('meta', {'name': 'keywords'})
         seo_meta_keywords = keywords_meta.get('content', 'N/A') if keywords_meta else 'N/A'       
-        headings_list = _extract_headings(content_soup)
-        schemas_list = _extract_json_ld(soup)
 
         return {
             'title': title,

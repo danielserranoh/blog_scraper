@@ -17,7 +17,7 @@ class ExportManager:
     """
 
     def __init__(self):
-        pass
+        self.app_config = app_config
     
     def _get_post_richness_score(self, post):
         """
@@ -60,6 +60,8 @@ class ExportManager:
         """
         logger.info(f"--- Starting export process to {export_format.upper()} ---")
         all_posts_to_export = []
+
+        file_extension = app_config.get('processed_data', {}).get('adapter', 'json')
         
         for competitor in competitors_to_export:
             competitor_name = competitor['name']
@@ -71,10 +73,11 @@ class ExportManager:
                 continue
             
             # <--- MODIFIED: Use the JSON-based read, which returns native objects --->
+            # We set up the type of file in the config.json
             # The previous CSV-specific deserialization loop is now removed.
             # We now read all files from the processed directory.
             for filename in os.listdir(processed_folder):
-                if filename.endswith('.json'):
+                if filename.endswith(f'.{file_extension}'):
                     filepath = os.path.join(processed_folder, filename)
                     logger.info(f"Reading data for '{competitor_name}' from: {filename}")
                     with open(filepath, 'r', encoding='utf-8') as f:
@@ -84,7 +87,7 @@ class ExportManager:
                             all_posts_to_export.append(post)
 
         if not all_posts_to_export:
-            logger.warning("‼️ No data found to export.")
+            logger.warning("‼️ No data found to export. Please ensure you have processed data.")
             return
             
         final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)

@@ -50,3 +50,18 @@ class StateManager:
     def load_raw_urls(self, competitor_name):
         """Loads all post URLs from the raw data files."""
         return self.adapter.read_urls(competitor_name, file_type='raw')
+    
+    def get_latest_raw_filepath(self, competitor_name):
+        """
+        Finds and returns the full path of the most recently created raw data file.
+        """
+        raw_data_dir = os.path.join('data', 'raw', competitor_name)
+        if not os.path.isdir(raw_data_dir):
+            return None
+        
+        files = [os.path.join(raw_data_dir, f) for f in os.listdir(raw_data_dir)]
+        if not files:
+            return None
+            
+        latest_file = max(files, key=os.path.getctime)
+        return latest_file

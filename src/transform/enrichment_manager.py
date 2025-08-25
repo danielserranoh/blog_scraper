@@ -70,11 +70,13 @@ class EnrichmentManager:
             return
 
         logger.info(f"Found {len(raw_posts)} raw posts to enrich for '{competitor_name}'.")
+        
+        latest_raw_filepath = self.state_manager.get_latest_raw_filepath(competitor_name)
 
         await self.enrich_posts(
             competitor,
             raw_posts,
-            raw_posts, # The source data is the raw data
+            latest_raw_filepath, # The source data is the raw data
             batch_threshold,
             live_model,
             batch_model,

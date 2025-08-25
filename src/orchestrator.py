@@ -36,7 +36,7 @@ async def run_pipeline(args):
     batch_manager = BatchJobManager(app_config)
     scraper_manager = ScraperManager(app_config)
     enrichment_manager = EnrichmentManager(app_config)
-    export_manager = ExportManager()
+    export_manager = ExportManager(app_config)
 
     if args.check_job:
         for competitor in competitors_to_process:

@@ -156,6 +156,7 @@ class GeminiAPIConnector:
             logger.error(f"Error checking status for job {job_id}: {e}")
             return "ERROR"
 
+    # <--- UPDATED: The function will now be able to reconstruct the post using metadata if the original source file is missing. --->
     def download_batch_results(self, job_id, original_posts=None):
         """
         Downloads and processes batch job results.
@@ -198,7 +199,10 @@ class GeminiAPIConnector:
                         'url': metadata.get('url', 'N/A'),
                         'publication_date': metadata.get('publication_date', 'N/A'),
                         'content': 'N/A (Reconstructed from batch result)',
-                        'seo_meta_keywords': metadata.get('seo_meta_keywords', 'N/A')
+                        'seo_meta_keywords': metadata.get('seo_meta_keywords', 'N/A'),
+                        # Include other metadata fields to ensure full reconstruction
+                        'headings': metadata.get('headings', []),
+                        'schemas': metadata.get('schemas', [])
                     }
 
                 response_data = result_json.get('response', {})
@@ -265,9 +269,20 @@ class GeminiAPIConnector:
                 prompt = utils.get_prompt("enrichment_instruction", content=post['content'], headings=post.get('headings'), primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
                 if not prompt: continue
                 
+                # Create a metadata object to embed in the request payload
+                metadata = {
+                    "url": post.get('url'),
+                    "title": post.get('title'),
+                    "publication_date": post.get('publication_date'),
+                    "seo_meta_keywords": post.get('seo_meta_keywords'),
+                    "headings": post.get('headings', []),
+                    "schemas": post.get('schemas', [])
+                }
+                
                 request_payload = {
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"response_mime_type": "application/json"}
+                    "generationConfig": {"response_mime_type": "application/json"},
+                    "metadata": metadata # <--- Add the metadata here
                 }
                 json_line = {"key": f"post-{i}", "request": request_payload}
                 jsonl_lines.append(json.dumps(json_line))

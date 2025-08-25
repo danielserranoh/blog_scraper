@@ -221,9 +221,15 @@ class BatchJobManager:
             
             original_posts_chunk = None
             if os.path.exists(raw_posts_file_path):
-                with open(raw_posts_file_path, "r") as f:
-                    original_posts_chunk = [json.loads(line) for line in f]
-            
+                # --- UPDATED: Handle both JSON and CSV files ---
+                if raw_posts_file_path.endswith('.jsonl'):
+                    with open(raw_posts_file_path, "r") as f:
+                        original_posts_chunk = [json.loads(line) for line in f]
+                elif raw_posts_file_path.endswith('.csv'):
+                    with open(raw_posts_file_path, mode='r', newline='', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        original_posts_chunk = list(reader)
+
             chunk_results = self.api_connector.download_batch_results(job_id, original_posts_chunk)
             all_enriched_posts.extend(chunk_results)
 
@@ -234,11 +240,28 @@ class BatchJobManager:
             # Load the original raw data from the saved source file
             original_posts_map = {}
             if source_raw_filepath and os.path.exists(source_raw_filepath):
-                with open(source_raw_filepath, mode='r', newline='', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        original_posts_map[row['url']] = row
+                # --- UPDATED: Handle both JSON and CSV files ---
+                if source_raw_filepath.endswith('.json'):
+                    with open(source_raw_filepath, 'r', encoding='utf-8') as f:
+                        original_posts_from_file = json.load(f)
+                elif source_raw_filepath.endswith('.csv'):
+                    with open(source_raw_filepath, mode='r', newline='', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        original_posts_from_file = list(reader)
 
+                for post in original_posts_from_file:
+                    original_posts_map[post['url']] = post
+            else:
+                logger.warning(f"Could not find the original source file at {source_raw_filepath}. Reconstructing data.")
+                # If the source file is missing, reconstruct the original posts map
+                for post in all_enriched_posts:
+                    try:
+                        # Use the metadata from the API request to reconstruct
+                        original_posts_map[post['url']] = post
+                    except KeyError:
+                        logger.error(f"Post is missing a 'url' key, cannot be properly merged: {post}")
+                        continue
+            
             # Now, merge the enriched data with the original data
             for enriched_post in all_enriched_posts:
                 original_url = enriched_post.get('url')

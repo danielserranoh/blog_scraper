@@ -63,9 +63,11 @@ class ExportManager:
 
         file_extension = app_config.get('processed_data', {}).get('adapter', 'json')
         
+        print(f"DEBUG: Processing these competitors: {[c['name'] for c in competitors_to_export]}")
+
+
         for competitor in competitors_to_export:
             competitor_name = competitor['name']
-            # --- UPDATED PATH: Read from the 'processed' data directory ---
             processed_folder = os.path.join("data", "processed", competitor_name)
             
             if not os.path.isdir(processed_folder):
@@ -76,8 +78,10 @@ class ExportManager:
             # We set up the type of file in the config.json
             # The previous CSV-specific deserialization loop is now removed.
             # We now read all files from the processed directory.
+            files_found = False
             for filename in os.listdir(processed_folder):
                 if filename.endswith(f'.{file_extension}'):
+                    files_found = True
                     filepath = os.path.join(processed_folder, filename)
                     logger.info(f"Reading data for '{competitor_name}' from: {filename}")
                     with open(filepath, 'r', encoding='utf-8') as f:
@@ -85,12 +89,22 @@ class ExportManager:
                         for post in data:
                             post['competitor'] = competitor_name
                             all_posts_to_export.append(post)
+            # --- DEBUG: Print if any files were found in this competitor's folder ---
+            if not files_found:
+                print(f"DEBUG: No files with '.{file_extension}' extension found in {processed_folder}")
+
+        # --- DEBUG: Print the total number of posts read from all files ---
+        print(f"DEBUG: Total posts read before deduplication: {len(all_posts_to_export)}")
+
 
         if not all_posts_to_export:
             logger.warning("‼️ No data found to export. Please ensure you have processed data.")
             return
             
         final_posts = self._deduplicate_and_merge_posts(all_posts_to_export)
+
+        # --- DEBUG: Print the number of posts after deduplication ---
+        print(f"DEBUG: Total posts after deduplication: {len(final_posts)}")
 
         try:
             formatted_data = exporters.export_data(final_posts, export_format, app_config)

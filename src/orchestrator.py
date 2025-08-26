@@ -30,6 +30,7 @@ async def run_pipeline(args):
 
     competitors_to_process = get_competitors_to_process(competitor_config, args.competitor)
     if not competitors_to_process:
+        logger.info("No competitor to process. Stop")
         return
 
     # Instantiate manager classes
@@ -39,12 +40,15 @@ async def run_pipeline(args):
     export_manager = ExportManager(app_config)
 
     if args.check_job:
+        logger.info(f"--- Check pending jobs process ---")  
         for competitor in competitors_to_process:
             await batch_manager.check_and_load_results(competitor, app_config)
             
     elif args.export:
+        logger.info(f"--- Exporting process ---")  
         for competitor in competitors_to_process:
             await batch_manager.check_and_load_results(competitor, app_config)
+        logger.info(f"  - Exporting data")    
         export_manager.run_export_process(competitors_to_process, args.export, app_config)
 
     elif args.enrich:

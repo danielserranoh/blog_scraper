@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", message=".* is not a valid JobState.*", catego
 
 # --- Logger Setup ---
 class ColorFormatter(logging.Formatter):
-    COLORS = { 'INFO': 'blue', 'WARNING': 'yellow', 'ERROR': 'red' }
+    COLORS = { 'INFO': 'cyan', 'WARNING': 'yellow', 'ERROR': 'red' }
     def format(self, record):
         log_message = super().format(record)
         log_color = self.COLORS.get(record.levelname)
@@ -117,7 +117,7 @@ def export(export_format, competitor):
     args = SimpleNamespace(
         export=export_format,
         competitor=competitor,
-        check_job=True, # Export must check jobs first
+        check_job=False,
         wait=False,
         days=None,
         all=False,
@@ -125,7 +125,9 @@ def export(export_format, competitor):
         enrich=False,
         enrich_raw=False
     )
-    
+    # --- DEBUG: Add this line ---
+    logging.info(f"DEBUG: 'enrich' command handler called. args={args}")
+
     asyncio.run(run_pipeline(args))
 
 if __name__ == "__main__":

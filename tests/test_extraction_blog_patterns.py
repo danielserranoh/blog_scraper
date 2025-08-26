@@ -4,6 +4,7 @@
 import pytest
 import httpx
 from unittest.mock import AsyncMock
+from types import SimpleNamespace # <--- ADD THIS
 
 # Import the specific scraper and stats object we want to test
 from src.extract.blog_patterns import single_list
@@ -43,7 +44,8 @@ async def test_single_list_scraper_prevents_infinite_loop(mocker, mock_stats):
     mocker.patch('src.extract.blog_patterns.single_list._get_post_details', new_callable=AsyncMock, return_value={"title": "Mock Post"})
 
     # Run the scraper by consuming the async generator
-    scraped_posts = [post async for batch in single_list.scrape(mock_config, 30, False, 10, mock_stats) for post in batch]
+    # --- FIX: Pass an empty set for existing_urls ---
+    scraped_posts = [post async for batch in single_list.scrape(mock_config, 30, False, 10, mock_stats, existing_urls=set()) for post in batch]
 
     assert mock_stats.successful == 1
     assert mock_get.call_count == 2

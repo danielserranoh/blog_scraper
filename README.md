@@ -28,7 +28,7 @@ The project is built on a modular, **manager-based architecture** that centraliz
 
 3.  **Configuration Files**: The project uses two main configuration files in the `config/` directory:
     * `config.json`: For application settings like the batch threshold, model names, and a list of general DXP competitors to aid in funnel stage analysis.
-    * `competitor_seed_data.json`: A list of the competitor websites and their assigned scraping patterns.
+    * `competitor_data.json`: A list of the competitor websites and their assigned scraping patterns.
 
     A `performance_log.json` file will be created automatically in the `config/` directory to store data for the time estimation feature.
 
@@ -80,7 +80,7 @@ This is the "brains" of the application. It acts as a high-level **conductor**, 
 ## Extending the Project
 Adding a new competitor is now incredibly simple due to the decoupled, pattern-based architecture.
 
-1.  Open `config/competitor_seed_data.json`.
+1.  Open `config/competitor_data.json`.
 2.  Add a new JSON object for the new competitor.
 3.  Fill in their `name`, `base_url`, `category_paths`, and the necessary CSS selectors.
 4.  For `structure_pattern`, choose one of the existing structures (e.g., `"multi_category"`, `"single_list"`).

@@ -6,6 +6,7 @@ import os
 import json
 import logging
 from unittest.mock import MagicMock, AsyncMock, PropertyMock
+from types import SimpleNamespace # <--- ADD THIS
 
 # Import the new BatchJobManager to test its methods
 from src.transform.batch_manager import BatchJobManager
@@ -52,7 +53,8 @@ async def test_submit_new_jobs_calls_connector_create_job(mocker, mock_app_confi
     mocker.patch.object(BatchJobManager, '_prompt_to_wait_for_job', new_callable=AsyncMock)
 
     manager = BatchJobManager(mock_app_config)
-    await manager.submit_new_jobs(mock_competitor_config, mock_posts, "gemini-model", mock_app_config, "raw_filepath")
+    # <--- UPDATED: Added the `wait` flag. --->
+    await manager.submit_new_jobs(mock_competitor_config, mock_posts, "gemini-model", mock_app_config, "raw_filepath", wait=False)
     
     mock_api_connector.create_batch_job.assert_called_once()
     assert mock_api_connector.create_batch_job.call_args[0][2] == "gemini-model"

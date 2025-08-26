@@ -4,6 +4,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 import logging
+from types import SimpleNamespace # <--- ADD THIS
 
 # Import the manager and its dependencies to mock
 from src.extract.scraper_manager import ScraperManager
@@ -53,13 +54,19 @@ async def test_run_scrape_and_submit_success(mocker, mock_app_config, mock_compe
     
     mock_state_manager_instance.save_raw_data.return_value = "data/raw/test_competitor_timestamp.csv"
     mock_enrichment_manager_instance.enrich_posts.return_value = AsyncMock()
+    
+    # <--- ADDED: Mock the new method to load URLs. --->
+    mock_state_manager_instance.load_raw_urls.return_value = set()
 
     manager = ScraperManager(mock_app_config)
-    await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config)
+    # <--- UPDATED: Added the `wait` flag. --->
+    await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config, wait=False)
 
     # Assertions
     mock_state_manager_instance.save_raw_data.assert_called_once_with(mock_posts, "test_competitor")
     mock_enrichment_manager_instance.enrich_posts.assert_called_once()
+    # <--- ADDED: Assert that the new URL loading method is called. --->
+    mock_state_manager_instance.load_raw_urls.assert_called_once_with("test_competitor")
     
 @pytest.mark.asyncio
 async def test_run_scrape_and_submit_no_posts(mocker, mock_app_config, mock_competitor_config):
@@ -75,12 +82,18 @@ async def test_run_scrape_and_submit_no_posts(mocker, mock_app_config, mock_comp
     mocker.patch('src.extract.scraper_manager.StateManager', return_value=mock_state_manager_instance)
     mocker.patch('src.extract.scraper_manager.EnrichmentManager', return_value=mock_enrichment_manager_instance)
     
+    # <--- ADDED: Mock the new method to load URLs. --->
+    mock_state_manager_instance.load_raw_urls.return_value = set()
+
     manager = ScraperManager(mock_app_config)
-    await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config)
+    # <--- UPDATED: Added the `wait` flag. --->
+    await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config, wait=False)
 
     # Assertions
     mock_state_manager_instance.save_raw_data.assert_not_called()
     mock_enrichment_manager_instance.enrich_posts.assert_not_called()
+    mock_state_manager_instance.load_raw_urls.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_run_scrape_and_submit_save_fail(mocker, mock_app_config, mock_competitor_config, mock_posts, caplog):
@@ -97,10 +110,13 @@ async def test_run_scrape_and_submit_save_fail(mocker, mock_app_config, mock_com
     mocker.patch('src.extract.scraper_manager.EnrichmentManager', return_value=mock_enrichment_manager_instance)
     
     mock_state_manager_instance.save_raw_data.return_value = None
+    # <--- ADDED: Mock the new method to load URLs. --->
+    mock_state_manager_instance.load_raw_urls.return_value = set()
 
     manager = ScraperManager(mock_app_config)
     with caplog.at_level(logging.ERROR):
-        await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config)
+        # <--- UPDATED: Added the `wait` flag. --->
+        await manager.run_scrape_and_submit(mock_competitor_config, 30, False, 10, "live_model", "batch_model", mock_app_config, wait=False)
     
     # Assertions
     mock_state_manager_instance.save_raw_data.assert_called_once_with(mock_posts, "test_competitor")

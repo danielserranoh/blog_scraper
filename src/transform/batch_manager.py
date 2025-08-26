@@ -242,6 +242,8 @@ class BatchJobManager:
         if all_enriched_posts:
             # Load the original raw data from the saved source file
             original_posts_map = {}
+            original_posts_from_file = []
+            
             if source_raw_filepath and os.path.exists(source_raw_filepath):
                 # --- UPDATED: Handle both JSON and CSV files ---
                 if source_raw_filepath.endswith('.json'):

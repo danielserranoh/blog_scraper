@@ -4,13 +4,15 @@ rootdir: /Users/danielserrano/Tools/blog_scraper
 configfile: pyproject.toml
 plugins: respx-0.22.0, asyncio-1.1.0, anyio-4.10.0, mock-3.14.1
 asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 17 items
+collected 21 items
 
-tests/test_batch_manager.py ...                                          [ 17%]
-tests/test_enrichment_live.py .                                          [ 23%]
-tests/test_enrichment_manager.py ....                                    [ 47%]
+tests/test_batch_manager.py ...                                          [ 14%]
+tests/test_enrichment_live.py .                                          [ 19%]
+tests/test_enrichment_manager.py ....                                    [ 38%]
+tests/test_exporters.py ..                                               [ 47%]
 tests/test_extraction_blog_patterns.py .                                 [ 52%]
-tests/test_orchestrator.py .....                                         [ 82%]
-tests/test_scraper_manager.py ...                                        [100%]
+tests/test_orchestrator.py .....                                         [ 76%]
+tests/test_scraper_manager.py ...                                        [ 90%]
+tests/test_state_manager.py ..                                           [100%]
 
-============================== 17 passed in 0.19s ==============================
+============================== 21 passed in 0.31s ==============================

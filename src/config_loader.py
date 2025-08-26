@@ -13,7 +13,7 @@ def load_configuration():
     try:
         with open('config/config.json', 'r') as f:
             app_config = json.load(f)
-        with open('config/competitor_seed_data.json', 'r') as f:
+        with open('config/competitor_data.json', 'r') as f:
             competitor_config = json.load(f)
         
         # --- FIX: Ensure consistency in the configuration file ---

@@ -4,6 +4,7 @@
 import pytest
 import json
 from unittest.mock import MagicMock, AsyncMock, patch
+from types import SimpleNamespace # <--- ADD THIS
 
 # Import the orchestrator module to test its functions
 from src.orchestrator import run_pipeline
@@ -45,7 +46,8 @@ def mock_config(mocker):
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_scraper_manager(mocker, mock_managers, mock_config):
     """Tests that the orchestrator calls the scraper manager for a default run."""
-    mock_args = MagicMock(competitor=None, days=30, all=False, check_job=False, enrich=False, enrich_raw=False, export=None)
+    # <--- UPDATED: Use a SimpleNamespace object to mock args. --->
+    mock_args = SimpleNamespace(competitor=None, days=30, all=False, check_job=False, enrich=False, enrich_raw=False, export=None, wait=False)
     mock_scrape = mocker.patch.object(MockScraperManager, 'run_scrape_and_submit', new_callable=AsyncMock)
 
     await run_pipeline(mock_args)
@@ -55,7 +57,8 @@ async def test_run_pipeline_calls_scraper_manager(mocker, mock_managers, mock_co
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_enrichment_manager_for_enrich(mocker, mock_managers, mock_config):
     """Tests that the orchestrator calls the enrichment manager for the --enrich flag."""
-    mock_args = MagicMock(competitor="test_competitor", enrich=True, check_job=False, enrich_raw=False, export=None)
+    # <--- UPDATED: Use a SimpleNamespace object. --->
+    mock_args = SimpleNamespace(competitor="test_competitor", enrich=True, check_job=False, enrich_raw=False, export=None, wait=False)
     mock_check_job = mocker.patch.object(MockBatchJobManager, 'check_and_load_results', new_callable=AsyncMock)
     mock_enrich = mocker.patch.object(MockEnrichmentManager, 'run_enrichment_process', new_callable=AsyncMock)
 
@@ -69,7 +72,8 @@ async def test_run_pipeline_calls_enrichment_manager_for_enrich(mocker, mock_man
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_batch_manager_for_check_job(mocker, mock_managers, mock_config):
     """Tests that the orchestrator calls the batch manager for the --check-job flag."""
-    mock_args = MagicMock(competitor="test_competitor", check_job=True, enrich=False, enrich_raw=False, export=None)
+    # <--- UPDATED: Use a SimpleNamespace object. --->
+    mock_args = SimpleNamespace(competitor="test_competitor", check_job=True, enrich=False, enrich_raw=False, export=None, wait=False)
     mock_check_job = mocker.patch.object(MockBatchJobManager, 'check_and_load_results', new_callable=AsyncMock)
 
     await run_pipeline(mock_args)
@@ -79,7 +83,8 @@ async def test_run_pipeline_calls_batch_manager_for_check_job(mocker, mock_manag
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_enrichment_manager_for_enrich_raw(mocker, mock_managers, mock_config):
     """Tests that the orchestrator calls the enrichment manager for the --enrich-raw flag."""
-    mock_args = MagicMock(competitor="test_competitor", enrich_raw=True, enrich=False, check_job=False, export=None)
+    # <--- UPDATED: Use a SimpleNamespace object. --->
+    mock_args = SimpleNamespace(competitor="test_competitor", enrich_raw=True, enrich=False, check_job=False, export=None, wait=False)
     mock_enrich_raw = mocker.patch.object(MockEnrichmentManager, 'enrich_raw_data', new_callable=AsyncMock)
 
     await run_pipeline(mock_args)
@@ -89,7 +94,8 @@ async def test_run_pipeline_calls_enrichment_manager_for_enrich_raw(mocker, mock
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_export_manager_for_export(mocker, mock_managers, mock_config):
     """Tests that the orchestrator calls the export manager for the --export flag."""
-    mock_args = MagicMock(competitor="test_competitor", export='csv', check_job=False, enrich=False, enrich_raw=False)
+    # <--- UPDATED: Use a SimpleNamespace object. --->
+    mock_args = SimpleNamespace(competitor="test_competitor", export='csv', check_job=False, enrich=False, enrich_raw=False, wait=False)
     mock_export = mocker.patch.object(MockExportManager, 'run_export_process')
     mock_check_job = mocker.patch.object(MockBatchJobManager, 'check_and_load_results', new_callable=AsyncMock)
 

@@ -4,6 +4,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 import logging
+from types import SimpleNamespace # <--- ADD THIS
 
 # Import the manager and its dependencies to mock
 from src.transform.enrichment_manager import EnrichmentManager
@@ -57,7 +58,7 @@ async def test_run_enrichment_process_finds_posts(mocker, mock_app_config, mock_
     manager = EnrichmentManager(mock_app_config)
     manager.enrich_posts = AsyncMock()
 
-    await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config)
+    await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config, wait=False)
     
     # Assert that enrich_posts was called with only the posts that need enriching
     manager.enrich_posts.assert_called_once()
@@ -82,7 +83,7 @@ async def test_run_enrichment_process_no_posts_to_enrich(mocker, mock_app_config
     manager = EnrichmentManager(mock_app_config)
     manager.enrich_posts = AsyncMock()
 
-    await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config)
+    await manager.run_enrichment_process(mock_competitor_config, 5, "live_model", "batch_model", mock_app_config, wait=False)
 
     # Assert that enrich_posts was never called
     manager.enrich_posts.assert_not_called()
@@ -110,7 +111,8 @@ async def test_enrich_posts_live_mode(mocker, mock_app_config, mock_competitor_c
         batch_threshold=mock_app_config['batch_threshold'],
         live_model="live_model",
         batch_model="batch_model",
-        app_config=mock_app_config
+        app_config=mock_app_config,
+        wait=False # <--- UPDATED: Added the `wait` flag. --->
     )
     
     # Assert that live enrichment was called and batch was not
@@ -141,7 +143,8 @@ async def test_enrich_posts_batch_mode(mocker, mock_app_config, mock_competitor_
         batch_threshold=mock_app_config['batch_threshold'],
         live_model="live_model",
         batch_model="batch_model",
-        app_config=mock_app_config
+        app_config=mock_app_config,
+        wait=False # <--- UPDATED: Added the `wait` flag. --->
     )
 
     # Assert that batch enrichment was called and live was not

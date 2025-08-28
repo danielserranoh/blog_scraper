@@ -150,6 +150,7 @@ def _extract_headings(soup):
         })
     return headings
 
+
 def _extract_json_ld(soup):
     """
     Scrapes an blog post article for all JSON-LD schemas.
@@ -160,25 +161,24 @@ def _extract_json_ld(soup):
     Returns:
         list: A list of dictionaries, where each dictionary is a JSON-LD schema found on the page.
     """
-
     # 1. Find all script tags with the specific JSON-LD type
     schemas = []
     script_tags = soup.find_all('script', type='application/ld+json')
     
     # 2. Extract and parse the JSON data from each tag
     for tag in script_tags:
-        try:
-            # The data is inside the tag as text content
-            data = json.loads(tag.string)
-            schemas.append(data)
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON from a script tag: {e}")
-        except AttributeError:
+        # <--- FIX: Explicitly check for tag content before attempting to load JSON. --->
+        if tag.string:
+            try:
+                data = json.loads(tag.string)
+                schemas.append(data)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error decoding JSON from a script tag: {e}")
+        else:
             # This handles cases where a script tag might not have .string content
-            continue
+            logger.debug("Skipping empty script tag with JSON-LD type.")
 
     return schemas
-
 
 async def _get_post_details(client, base_url, post_url_path, config, stats): 
     """

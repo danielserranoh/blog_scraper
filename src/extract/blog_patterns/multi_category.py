@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 async def scrape(config, days, scrape_all, batch_size, stats, existing_urls):
     """Scrapes blogs with multiple categories, each with its own pagination."""
     posts_to_process = []
+    batches_to_process = 0
     base_url = config['base_url']
     processed_in_run_urls = set()
     
@@ -56,6 +57,7 @@ async def scrape(config, days, scrape_all, batch_size, stats, existing_urls):
                                 stats.successful += 1
                                 posts_to_process.append(details)
                                 if len(posts_to_process) >= batch_size:
+                                    batches_to_process +=1
                                     yield posts_to_process
                                     posts_to_process = []
                     
@@ -70,4 +72,6 @@ async def scrape(config, days, scrape_all, batch_size, stats, existing_urls):
                     break
 
     if posts_to_process:
+        batches_to_process +=1
+        logger.info(f"Processing {batches_to_process} batches")
         yield posts_to_process

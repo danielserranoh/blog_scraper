@@ -75,7 +75,7 @@ class BatchJobManager:
         source_raw_filepath = None
 
         if not os.path.exists(jobs_file_path):
-            logger.info(f" ℹ️ No pending jobs found for '{name}'.")
+            logger.info(f" ⚠️ No pending jobs found for '{name}'.")
             return
             
         try:
@@ -96,9 +96,11 @@ class BatchJobManager:
         if all_succeeded:
             try:
                 logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
-                await self._consolidate_and_save_results(competitor, pending_jobs, app_config, source_raw_filepath)
+                final_posts = await self.consolidate_results(competitor, pending_jobs, app_config, source_raw_filepath)
                 
-                self._cleanup_workspace(competitor, pending_jobs)
+                if final_posts:
+                    self._cleanup_workspace(competitor, pending_jobs)
+                    return final_posts
             except Exception as e:
                 logger.error(f"A critical error occurred during result processing for '{name}': {e}")
                 logger.error("Temporary workspace files have been preserved for manual inspection.")
@@ -209,7 +211,7 @@ class BatchJobManager:
         logger.info(f"Cleaned up all temporary files for '{name}'.")
 
 
-    async def _consolidate_and_save_results(self, competitor, pending_jobs, app_config, source_raw_filepath):
+    async def consolidate_results(self, competitor, pending_jobs, app_config, source_raw_filepath):
         """Downloads results for all successful jobs, consolidates them, and updates the state file."""
         name = competitor['name']
         workspace_folder = os.path.join('workspace', name)
@@ -224,7 +226,6 @@ class BatchJobManager:
             
             original_posts_chunk = None
             if os.path.exists(raw_posts_file_path):
-                # --- UPDATED: Handle both JSON and CSV files ---
                 if raw_posts_file_path.endswith('.jsonl'):
                     with open(raw_posts_file_path, "r") as f:
                         original_posts_chunk = [json.loads(line) for line in f]
@@ -243,9 +244,7 @@ class BatchJobManager:
             # Load the original raw data from the saved source file
             original_posts_map = {}
             original_posts_from_file = []
-            
             if source_raw_filepath and os.path.exists(source_raw_filepath):
-                # --- UPDATED: Handle both JSON and CSV files ---
                 if source_raw_filepath.endswith('.json'):
                     with open(source_raw_filepath, 'r', encoding='utf-8') as f:
                         original_posts_from_file = json.load(f)
@@ -258,16 +257,13 @@ class BatchJobManager:
                     original_posts_map[post['url']] = post
             else:
                 logger.warning(f"Could not find the original source file at {source_raw_filepath}. Reconstructing data.")
-                # If the source file is missing, reconstruct the original posts map
                 for post in all_enriched_posts:
                     try:
-                        # Use the metadata from the API request to reconstruct
                         original_posts_map[post['url']] = post
                     except KeyError:
                         logger.error(f"Post is missing a 'url' key, cannot be properly merged: {post}")
                         continue
             
-            # Now, merge the enriched data with the original data
             for enriched_post in all_enriched_posts:
                 original_url = enriched_post.get('url')
                 if original_url in original_posts_map:
@@ -279,5 +275,5 @@ class BatchJobManager:
             
             final_posts = list(original_posts_map.values())
 
-            # Use the StateManager to save the processed data
             self.state_manager.save_processed_data(final_posts, name, os.path.basename(source_raw_filepath))
+            return final_posts

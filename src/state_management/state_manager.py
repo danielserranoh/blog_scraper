@@ -1,6 +1,6 @@
 # src/state_management/state_manager.py
 # This module contains the centralized manager for all data persistence.
-
+import os
 import logging
 from .json_adapter import JsonAdapter
 from .csv_adapter import CsvAdapter

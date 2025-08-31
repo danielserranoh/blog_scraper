@@ -71,7 +71,7 @@ async def test_run_pipeline_calls_enrichment_manager_for_enrich(mocker, mock_man
 
 @pytest.mark.asyncio
 async def test_run_pipeline_calls_batch_manager_for_check_job(mocker, mock_managers, mock_config):
-    """Tests that the orchestrator calls the batch manager for the --check-job flag."""
+    """Tests that the orchestrator calls the batch manager for the check-job command."""
     # <--- UPDATED: Use a SimpleNamespace object. --->
     mock_args = SimpleNamespace(competitor="test_competitor", check_job=True, enrich=False, enrich_raw=False, export=None, wait=False)
     mock_check_job = mocker.patch.object(MockBatchJobManager, 'check_and_load_results', new_callable=AsyncMock)

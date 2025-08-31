@@ -7,7 +7,7 @@ import asyncio
 from dotenv import load_dotenv
 import warnings
 import click
-from types import SimpleNamespace # <--- ADD THIS
+from types import SimpleNamespace # <--- This import is no longer needed
 
 # Import the main orchestrator function
 from src.orchestrator import run_pipeline
@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", message=".* is not a valid JobState.*", catego
 
 # --- Logger Setup ---
 class ColorFormatter(logging.Formatter):
-    COLORS = { 'INFO': 'cyan', 'WARNING': 'yellow', 'ERROR': 'red' }
+    COLORS = { 'INFO': 'blue', 'WARNING': 'yellow', 'ERROR': 'red' }
     def format(self, record):
         log_message = super().format(record)
         log_color = self.COLORS.get(record.levelname)
@@ -46,25 +46,49 @@ def cli():
 @cli.command()
 @click.option('--days', '-d', type=int, default=30, help='Scrape posts from the last N days (default: 30).')
 @click.option('--all', '-a', is_flag=True, help='Scrape all available posts, overriding --days.')
-@click.option('--competitor', '-c', type=str, help='Specify a single competitor to scrape.')
+@click.option('--competitor', '-c', type=str, help='Specify a single competitor to export.')
 @click.option('--wait', is_flag=True, help='Waits for batch jobs to complete before exiting.')
-def scrape(days, all, competitor, wait):
-    """Scrape blog posts."""
+def get_posts(days, all, competitor, wait):
+    """Scrape posts, enrich, and save the final output."""
     if all:
         days = None
     
-    # <--- UPDATED: Create a SimpleNamespace object that mimics argparse's behavior. --->
-    args = SimpleNamespace(
-        days=days,
-        all=all,
-        competitor=competitor,
-        wait=wait,
-        scrape=True,
-        enrich=False,
-        enrich_raw=False,
-        check_job=False,
-        export=None
-    )
+    args = {
+        'days': days,
+        'all': all,
+        'competitor': competitor,
+        'wait': wait,
+        'get_posts': True,
+        'scrape': False,
+        'enrich': False,
+        'enrich_raw': False,
+        'check_job': False,
+        'export': None
+    }
+
+    asyncio.run(run_pipeline(args))
+
+@cli.command()
+@click.option('--days', '-d', type=int, default=30, help='Scrape posts from the last N days (default: 30).')
+@click.option('--all', '-a', is_flag=True, help='Scrape all available posts, overriding --days.')
+@click.option('--competitor', '-c', type=str, help='Specify a single competitor to scrape.')
+def scrape(days, all, competitor):
+    """Scrape posts and save raw data."""
+    if all:
+        days = None
+    
+    args = {
+        'days': days,
+        'all': all,
+        'competitor': competitor,
+        'scrape': True,
+        'enrich': False,
+        'enrich_raw': False,
+        'check_job': False,
+        'export': None,
+        'wait': False,
+        'get_posts': False
+    }
     
     asyncio.run(run_pipeline(args))
 
@@ -74,18 +98,18 @@ def scrape(days, all, competitor, wait):
 @click.option('--raw', is_flag=True, help='Enrich posts from the raw data directory.')
 def enrich(competitor, wait, raw):
     """Enrich existing posts or raw data."""
-    # <--- UPDATED: Create a SimpleNamespace object. --->
-    args = SimpleNamespace(
-        competitor=competitor,
-        wait=wait,
-        enrich=not raw,
-        enrich_raw=raw,
-        days=None,
-        all=False,
-        scrape=False,
-        check_job=False,
-        export=None
-    )
+    args = {
+        'competitor': competitor,
+        'wait': wait,
+        'enrich': not raw,
+        'enrich_raw': raw,
+        'days': None,
+        'all': False,
+        'scrape': False,
+        'check_job': False,
+        'export': None,
+        'get_posts': False
+    }
     
     asyncio.run(run_pipeline(args))
 
@@ -93,18 +117,18 @@ def enrich(competitor, wait, raw):
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to check.')
 def check_job(competitor):
     """Check the status of pending batch jobs."""
-    # <--- UPDATED: Create a SimpleNamespace object. --->
-    args = SimpleNamespace(
-        competitor=competitor,
-        check_job=True,
-        wait=False,
-        days=None,
-        all=False,
-        scrape=False,
-        enrich=False,
-        enrich_raw=False,
-        export=None
-    )
+    args = {
+        'competitor': competitor,
+        'check_job': True,
+        'wait': False,
+        'days': None,
+        'all': False,
+        'scrape': False,
+        'enrich': False,
+        'enrich_raw': False,
+        'export': None,
+        'get_posts': False
+    }
     
     asyncio.run(run_pipeline(args))
 
@@ -113,22 +137,22 @@ def check_job(competitor):
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to export.')
 def export(export_format, competitor):
     """Export the latest data to a file."""
-    # <--- UPDATED: Create a SimpleNamespace object. --->
-    args = SimpleNamespace(
-        export=export_format,
-        competitor=competitor,
-        check_job=False,
-        wait=False,
-        days=None,
-        all=False,
-        scrape=False,
-        enrich=False,
-        enrich_raw=False
-    )
-    # --- DEBUG: Add this line ---
-    logging.info(f"DEBUG: 'enrich' command handler called. args={args}")
-
+    args = {
+        'export_format': export_format,
+        'competitor': competitor,
+        'check_job': False,
+        'wait': False,
+        'days': None,
+        'all': False,
+        'scrape': False,
+        'enrich': False,
+        'enrich_raw': False,
+        'get_posts': False
+    }
+    
     asyncio.run(run_pipeline(args))
+
+
 
 if __name__ == "__main__":
     cli()

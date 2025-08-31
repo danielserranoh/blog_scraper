@@ -69,7 +69,7 @@ class JsonAdapter(BaseAdapter):
         
         logger.info(f"Read {len(posts)} posts from the '{file_type}' directory for '{competitor_name}'.")
         return posts
-    
+
     def read_urls(self, competitor_name, file_type):
         """
         Reads all post URLs from all JSON files in a specific data directory.

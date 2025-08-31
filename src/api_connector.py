@@ -41,13 +41,13 @@ class GeminiAPIConnector:
         funnel_stage = "N/A"
         prompt = utils.get_prompt("enrichment_instruction", content=content, headings=headings, primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
 
-        
+        plogger.info(f"Will enrich with the following prompt: {prompt} ")
         for i in range(3): # Retry logic
             try:
                 response = await self.client.aio.models.generate_content(
                     model=model_name,
                     contents=prompt,
-                    generation_config=types.GenerateContentConfig(response_mime_type="application/json")
+                   # generation_config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
                 parsed_json = json.loads(response.text)
                 summary = parsed_json.get('summary', 'N/A')
@@ -67,7 +67,7 @@ class GeminiAPIConnector:
         asynchronous calls to the Gemini API via the connector.
         """
         start_time = time.time()
-        
+        logger.info(f"Batch got {len(posts)} posts to Enrich Live with the {model_name} model")
         tasks = []
         for post in posts:
             if post['content'] and post['content'] != 'N/A':
@@ -124,7 +124,7 @@ class GeminiAPIConnector:
             
             uploaded_file = self.client.files.upload(
                 file=temp_api_file_path,
-                config=types.UploadFileConfig(mime_type="application/jsonl")
+                config=types.UploadFileConfig(display_name=competitor_name+'_'+str(len(posts)) ,mime_type="application/jsonl")
             )
             
             logger.info(f"Successfully uploaded batch file with ID: {uploaded_file.name}")
@@ -257,6 +257,21 @@ class GeminiAPIConnector:
             logger.info(f"Successfully cancelled job: {job_id}")
         except APIError as e:
             logger.error(f"Error cancelling job {job_id}: {e}")
+    
+    def delete_batch_job_file(self, job_id):
+        """Deletes file associated with a job from the Gemini API."""
+        if not self.client:
+            return
+
+        try:
+            job = self.client.batches.get(name=job_id)
+            if hasattr(job, 'src'):
+                self.client.files.delete(job.src)
+            if hasattr(job, 'dest'):
+                self.client.files.delete(job.dest.file_name)
+            logger.info(f"Successfully deleted file for job: {job_id}")
+        except APIError as e:
+            logger.error(f"Error deleting file for job {job_id}: {e}")
 
     def _create_jsonl_from_posts(self, posts, primary_competitors=None, dxp_competitors=None):
         """

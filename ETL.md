@@ -21,6 +21,22 @@ To keep our pipeline organized and robust, we've designed it like a team of spec
 
 ***
 
+***
+Data Management
+
+The State Manager sould be capable of string the transactional data in different formats and supports.
+Hence, the State Manager is designed to use different adaptors to deal with this.
+
+Additionally, it uses a Multi-File (Structured by Job) storyng system.
+    **Pros:**
+
+    - Highly Scalable: Each scrape or enrichment job creates a new, small file, which is much faster to read and write. This makes the system scalable to a large number of competitors and posts.
+
+    - Resilience: A write failure only affects a single file, not the entire dataset. This aligns with your Golden Rules by making the pipeline more resilient to errors.
+
+    - Clear State Management: Each file represents a single, complete job, which makes it easier to debug and track the state of your pipeline.the model to store the data isa 
+
+
 ## Blog Structural Patterns
 
 This project uses a powerful, pattern-based system to scrape different blogs. This means we've separated the "structure" of a blog from the code itself. Instead of writing custom code for every new blog, we just need to identify which of the following patterns it follows and add a few details to our configuration file.
@@ -79,3 +95,21 @@ We follow a set of core principles that guide our architecture. They are designe
 * **Rule #2: The Orchestrator Manages the "What", Managers Handle the "How".** The main `orchestrator.py` file is a simple director. It tells the managers what to do (`scrape this website`, `check for pending jobs`) but doesn't get involved in the details of how to do it. The managers handle all the complex, low-level tasks, leaving the orchestrator clean and readable.
 * **Rule #3: The API Connector is the Single Gateway to Gemini.** Our entire project talks to the Gemini API through one single door. If anything changes with the API, we only have to change the code behind that one door, and everything else in the project will continue to work. This makes our code much more reliable and easier to maintain.
 * **Rule #4: We care about In-Progress Work.** Our pipeline is designed to be resilient. It carefully tracks every piece of work in a special folder. If the script fails, the next time it runs, it can safely pick up exactly where it left off, so no work is ever lost.
+
+
+
+1. `Orchestrator` tells `ScraperManager` to scrape a website.
+
+2. ScraperManager scrapes the data and returns the raw posts and their file path to the Orchestrator.
+
+3. Orchestrator then tells the EnrichmentManager to enrich the raw data it just received.
+
+4.EnrichmentManager decides whether to use live or batch mode.
+
+5. EnrichmentManager calls the Live or calls BatchJobManager to handle the batch job lifecycle.
+
+6. Live or BatchJobManager reports to the EnrichmentManager that the job is complete.
+
+7. EnrichmentManager reports the processed data back to the Orchestrator.
+
+8. Orchestrator then tells the StateManager to save the final processed data.

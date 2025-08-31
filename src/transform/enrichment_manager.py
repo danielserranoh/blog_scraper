@@ -7,6 +7,7 @@ import logging
 from .live import transform_posts_live
 from .batch_manager import BatchJobManager
 from src.state_management.state_manager import StateManager
+from src import utils
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +17,41 @@ class EnrichmentManager:
     It discovers posts with missing data and submits them for enrichment via
     either live or batch API calls.
     """
-    def __init__(self, app_config):
-        self.batch_manager = BatchJobManager(app_config)
-        self.state_manager = StateManager(app_config)
+    def __init__(self, app_config, state_manager, batch_manager):
+        self.batch_manager = batch_manager
+        self.state_manager = state_manager
+        self.app_config = app_config
 
-    def _find_posts_to_enrich(self, competitor_name):
+    async def enrich_posts(self, competitor, posts_to_enrich, all_posts_for_merge, batch_threshold, live_model, batch_model, wait, source_raw_filepath):
         """
-        Loads all posts from the 'processed' directory and returns a list of
-        those that are missing enrichment data.
+        The central point for all post enrichment. It decides whether to use
+        live or batch mode and then calls the appropriate manager.
+        This function returns a list of enriched posts.
         """
-        processed_posts = self.state_manager.load_processed_data(competitor_name)
-        posts_to_enrich = []
-        for post in processed_posts:
-            if post.get('summary') == 'N/A' or post.get('seo_keywords') == 'N/A':
-                posts_to_enrich.append(post)
-        return processed_posts, posts_to_enrich
+        competitor_name = competitor['name']
+        
+        if len(posts_to_enrich) < batch_threshold:
+            logger.info(f"Processing {len(posts_to_enrich)} posts in LIVE mode...")
+            enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
+            if not enriched_posts:
+                return None
+            
+            # Merge the new enriched data with the original posts
+            enriched_map = {post['url']: post for post in enriched_posts}
+            final_posts = [enriched_map.get(post['url'], post) for post in all_posts_for_merge]
+            return final_posts
+        else:
+            logger.info(f"Processing {len(posts_to_enrich)} posts in BATCH mode...")
+            await self.batch_manager.submit_new_jobs(
+                competitor, 
+                posts_to_enrich, 
+                batch_model, 
+                self.app_config,
+                source_raw_filepath,
+                wait
+            )
+            return None
+
 
     async def run_enrichment_process(self, competitor, batch_threshold, live_model, batch_model, app_config, wait):
         """
@@ -46,16 +67,20 @@ class EnrichmentManager:
         
         logger.info(f"Will enrich {len(posts_to_enrich)} posts for '{competitor_name}'.")
         
-        await self.enrich_posts(
+        final_posts = await self.enrich_posts(
             competitor,
             posts_to_enrich,
             all_posts_from_file,
             batch_threshold,
             live_model,
             batch_model,
-            app_config,
-            wait
+            wait,
+            source_raw_filepath=None
         )
+
+        if final_posts:
+            self.state_manager.save_processed_data(final_posts, competitor_name, "placeholder.csv")
+
 
     async def enrich_raw_data(self, competitor, batch_threshold, live_model, batch_model, app_config, wait):
         """
@@ -70,44 +95,31 @@ class EnrichmentManager:
             return
 
         logger.info(f"Found {len(raw_posts)} raw posts to enrich for '{competitor_name}'.")
-        
-        latest_raw_filepath = self.state_manager.get_latest_raw_filepath(competitor_name)
 
-        await self.enrich_posts(
+        latest_raw_filepath = self.state_manager.get_latest_raw_filepath(competitor_name)
+        
+        final_posts = await self.enrich_posts(
             competitor,
             raw_posts,
-            latest_raw_filepath, # The source data is the raw data
+            raw_posts,
             batch_threshold,
             live_model,
             batch_model,
-            app_config,
-            wait
+            wait,
+            source_raw_filepath=latest_raw_filepath
         )
-
-
-    async def enrich_posts(self, competitor, posts, all_posts_from_file, batch_threshold, live_model, batch_model, app_config, wait):
-        """
-        The central point for all post enrichment. It decides whether to use
-        live or batch mode and then calls the appropriate manager.
-        """
-        competitor_name = competitor['name']
         
-        if len(posts) < batch_threshold:
-            logger.info(f"Processing {len(posts)} posts in LIVE mode...")
-            enriched_posts = await transform_posts_live(posts, live_model)
-            if enriched_posts:
-                enriched_map = {post['url']: post for post in enriched_posts}
-                final_posts = [enriched_map.get(post['url'], post) for post in all_posts_from_file]
-                
-                # Use the new adapter to save the processed data
-                self.state_manager.save_processed_data(final_posts, competitor_name, "placeholder.csv")
-        else:
-            logger.info(f"Processing {len(posts)} posts in BATCH mode...")
-            await self.batch_manager.submit_new_jobs(
-                competitor, 
-                posts, 
-                batch_model, 
-                app_config,
-                all_posts_from_file[0]['url'],
-                wait
-            )
+        if final_posts:
+            self.state_manager.save_processed_data(final_posts, competitor_name, "placeholder.csv")
+
+    def _find_posts_to_enrich(self, competitor_name):
+        """
+        Loads all posts from the 'processed' directory and returns a list of
+        those that are missing enrichment data.
+        """
+        processed_posts = self.state_manager.load_processed_data(competitor_name)
+        posts_to_enrich = []
+        for post in processed_posts:
+            if post.get('summary') == 'N/A' or post.get('seo_keywords') == 'N/A':
+                posts_to_enrich.append(post)
+        return processed_posts, posts_to_enrich

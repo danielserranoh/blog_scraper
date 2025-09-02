@@ -7,7 +7,6 @@ import asyncio
 from dotenv import load_dotenv
 import warnings
 import click
-from types import SimpleNamespace # <--- This import is no longer needed
 
 # Import the main orchestrator function
 from src.orchestrator import run_pipeline
@@ -37,6 +36,39 @@ def setup_logger():
     logging.getLogger("google.generativeai").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+async def handle_pipeline_result(result):
+    """Handle the result from run_pipeline and provide user feedback."""
+    if result is None:
+        # Success case - pipeline completed normally
+        return
+    
+    if isinstance(result, dict) and result.get('error'):
+        # Error case - pipeline returned an error
+        error_code = result.get('error_code', 'UNKNOWN')
+        message = result.get('message', 'Unknown error occurred')
+        details = result.get('details', {})
+        
+        print(colored(f"Error [{error_code}]: {message}", 'red'))
+        if details:
+            print(colored("Details:", 'yellow'))
+            for key, value in details.items():
+                print(colored(f"  {key}: {value}", 'yellow'))
+    else:
+        # Success case with return data
+        if result.get('success'):
+            operation = result.get('operation', 'unknown')
+            print(colored(f"✓ {operation} completed successfully", 'green'))
+            
+            # Show operation-specific metrics
+            if 'posts_scraped' in result:
+                print(colored(f"  Posts scraped: {result['posts_scraped']}", 'cyan'))
+            elif 'posts_enriched' in result:
+                print(colored(f"  Posts enriched: {result['posts_enriched']}", 'cyan'))
+            elif 'posts_processed' in result:
+                print(colored(f"  Posts processed: {result['posts_processed']}", 'cyan'))
+            elif 'results_count' in result:
+                print(colored(f"  Results loaded: {result['results_count']}", 'cyan'))
+
 @click.group()
 def cli():
     """An advanced ETL pipeline to scrape and enrich blog posts."""
@@ -46,15 +78,12 @@ def cli():
 @cli.command()
 @click.option('--days', '-d', type=int, default=30, help='Scrape posts from the last N days (default: 30).')
 @click.option('--all', '-a', is_flag=True, help='Scrape all available posts, overriding --days.')
-@click.option('--competitor', '-c', type=str, help='Specify a single competitor to export.')
+@click.option('--competitor', '-c', type=str, help='Specify a single competitor to process.')
 @click.option('--wait', is_flag=True, help='Waits for batch jobs to complete before exiting.')
 def get_posts(days, all, competitor, wait):
     """Scrape posts, enrich, and save the final output."""
-    if all:
-        days = None
-    
     args = {
-        'days': days,
+        'days': days if not all else None,
         'all': all,
         'competitor': competitor,
         'wait': wait,
@@ -66,7 +95,11 @@ def get_posts(days, all, competitor, wait):
         'export': None
     }
 
-    asyncio.run(run_pipeline(args))
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
 
 @cli.command()
 @click.option('--days', '-d', type=int, default=30, help='Scrape posts from the last N days (default: 30).')
@@ -74,11 +107,8 @@ def get_posts(days, all, competitor, wait):
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to scrape.')
 def scrape(days, all, competitor):
     """Scrape posts and save raw data."""
-    if all:
-        days = None
-    
     args = {
-        'days': days,
+        'days': days if not all else None,
         'all': all,
         'competitor': competitor,
         'scrape': True,
@@ -90,7 +120,11 @@ def scrape(days, all, competitor):
         'get_posts': False
     }
     
-    asyncio.run(run_pipeline(args))
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
 
 @cli.command()
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to enrich.')
@@ -111,7 +145,11 @@ def enrich(competitor, wait, raw):
         'get_posts': False
     }
     
-    asyncio.run(run_pipeline(args))
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
 
 @cli.command()
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to check.')
@@ -130,7 +168,11 @@ def check_job(competitor):
         'get_posts': False
     }
     
-    asyncio.run(run_pipeline(args))
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
 
 @cli.command()
 @click.option('--format', '-f', 'export_format', type=click.Choice(['txt', 'json', 'md', 'gsheets', 'csv']), required=True, help='Export the data to a specified format.')
@@ -150,9 +192,11 @@ def export(export_format, competitor):
         'get_posts': False
     }
     
-    asyncio.run(run_pipeline(args))
-
-
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
 
 if __name__ == "__main__":
     cli()

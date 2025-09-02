@@ -8,12 +8,14 @@ import asyncio
 import time
 import csv
 from datetime import datetime
+from typing import Dict, Any, List, Optional
 
 # Import live enrichment and other helpers
 from . import live
 from src import utils
 from src.state_management.state_manager import StateManager
 from src.api_connector import GeminiAPIConnector
+from src.di_container import BatchJobError
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ class BatchJobManager:
     Manages the entire lifecycle of one or more Gemini Batch jobs, from
     submission to result processing.
     """
-    def __init__(self, app_config):
+    def __init__(self, app_config: Dict[str, Any]):
         self.api_connector = GeminiAPIConnector()
         self.state_manager = StateManager(app_config)
     
@@ -65,47 +67,66 @@ class BatchJobManager:
                 await self._prompt_to_wait_for_job(competitor, len(posts), app_config)
 
 
-    async def check_and_load_results(self, competitor, app_config):
+    async def check_and_load_results(self, competitor: Dict[str, Any], app_config: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         """
         Orchestrates the checking of jobs and the loading of results.
-        """
-        name = competitor['name']
-        workspace_folder = os.path.join('workspace', name)
-        jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
-        source_raw_filepath = None
-
-        if not os.path.exists(jobs_file_path):
-            logger.info(f" ⚠️ No pending jobs found for '{name}'.")
-            return
-            
-        try:
-            with open(jobs_file_path, "r") as f:
-                jobs_data = json.load(f)
-                pending_jobs = jobs_data.get('jobs', [])
-                source_raw_filepath = jobs_data.get('source_raw_filepath')
-        except (FileNotFoundError, json.JSONDecodeError):
-            logger.error(f"Could not read pending jobs file for '{name}'. Skipping.")
-            return
-
-        statuses = self._poll_job_statuses(pending_jobs)
-        summary_message, all_succeeded = utils.get_job_status_summary(statuses)
         
-        logger.info(f"--- Status for '{name}': {len(pending_jobs)} job(s) ---")
-        logger.info(summary_message)
+        Args:
+            competitor: Competitor configuration dictionary
+            app_config: Application configuration
+            
+        Returns:
+            List of processed posts if successful, None otherwise
+            
+        Raises:
+            BatchJobError: If checking jobs fails
+        """
+        try:
+            name = competitor['name']
+            workspace_folder = os.path.join('workspace', name)
+            jobs_file_path = os.path.join(workspace_folder, "pending_jobs.json")
+            source_raw_filepath = None
 
-        if all_succeeded:
-            try:
-                logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
-                final_posts = await self.consolidate_results(competitor, pending_jobs, app_config, source_raw_filepath)
+            if not os.path.exists(jobs_file_path):
+                logger.info(f" ⚠️ No pending jobs found for '{name}'.")
+                return None
                 
-                if final_posts:
-                    self._cleanup_workspace(competitor, pending_jobs)
-                    return final_posts
-            except Exception as e:
-                logger.error(f"A critical error occurred during result processing for '{name}': {e}")
-                logger.error("Temporary workspace files have been preserved for manual inspection.")
-        else:
-            logger.info("--- Not all jobs have finished processing. Please check again later. ---")
+            try:
+                with open(jobs_file_path, "r") as f:
+                    jobs_data = json.load(f)
+                    pending_jobs = jobs_data.get('jobs', [])
+                    source_raw_filepath = jobs_data.get('source_raw_filepath')
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                logger.error(f"Could not read pending jobs file for '{name}'. Skipping.")
+                raise BatchJobError(f"Failed to read pending jobs: {str(e)}", details={"competitor": name})
+
+            statuses = self._poll_job_statuses(pending_jobs)
+            summary_message, all_succeeded = utils.get_job_status_summary(statuses)
+            
+            logger.info(f"--- Status for '{name}': {len(pending_jobs)} job(s) ---")
+            logger.info(summary_message)
+
+            if all_succeeded:
+                try:
+                    logger.info(f"--- All jobs for '{name}' succeeded! Consolidating and updating state... ---")
+                    final_posts = await self.consolidate_results(competitor, pending_jobs, app_config, source_raw_filepath)
+                    
+                    if final_posts:
+                        self._cleanup_workspace(competitor, pending_jobs)
+                        return final_posts
+                except Exception as e:
+                    logger.error(f"A critical error occurred during result processing for '{name}': {e}")
+                    logger.error("Temporary workspace files have been preserved for manual inspection.")
+                    raise BatchJobError(f"Result processing failed: {str(e)}", details={"competitor": name})
+            else:
+                logger.info("--- Not all jobs have finished processing. Please check again later. ---")
+                return None
+                
+        except BatchJobError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error checking jobs for {competitor.get('name', 'unknown')}: {e}")
+            raise BatchJobError(f"Job checking failed: {str(e)}", details={"competitor": competitor.get('name')})
 
 
     # --- Internal Helper Methods (moved from orchestrator.py) ---
@@ -211,36 +232,54 @@ class BatchJobManager:
         logger.info(f"Cleaned up all temporary files for '{name}'.")
 
 
-    async def consolidate_results(self, competitor, pending_jobs, app_config, source_raw_filepath):
-        """Downloads results for all successful jobs, consolidates them, and updates the state file."""
-        name = competitor['name']
-        workspace_folder = os.path.join('workspace', name)
+    async def consolidate_results(self, competitor: Dict[str, Any], pending_jobs: List[Dict[str, Any]], app_config: Dict[str, Any], source_raw_filepath: Optional[str]) -> List[Dict[str, Any]]:
+        """
+        Downloads results for all successful jobs, consolidates them, and updates the state file.
         
-        all_enriched_posts = []
-        total_posts = sum(job.get('num_posts', 0) for job in pending_jobs)
-        start_time = time.time()
-
-        for job_info in pending_jobs:
-            job_id = job_info['job_id']
-            raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
+        Args:
+            competitor: Competitor configuration dictionary
+            pending_jobs: List of pending job information
+            app_config: Application configuration
+            source_raw_filepath: Path to the source raw data file
             
-            original_posts_chunk = None
-            if os.path.exists(raw_posts_file_path):
-                if raw_posts_file_path.endswith('.jsonl'):
-                    with open(raw_posts_file_path, "r") as f:
-                        original_posts_chunk = [json.loads(line) for line in f]
-                elif raw_posts_file_path.endswith('.csv'):
-                    with open(raw_posts_file_path, mode='r', newline='', encoding='utf-8') as f:
-                        reader = csv.DictReader(f)
-                        original_posts_chunk = list(reader)
+        Returns:
+            List of consolidated enriched posts
+            
+        Raises:
+            BatchJobError: If consolidation fails
+        """
+        try:
+            name = competitor['name']
+            workspace_folder = os.path.join('workspace', name)
+            
+            all_enriched_posts = []
+            total_posts = sum(job.get('num_posts', 0) for job in pending_jobs)
+            start_time = time.time()
 
-            chunk_results = self.api_connector.download_batch_results(job_id, original_posts_chunk)
-            all_enriched_posts.extend(chunk_results)
+            for job_info in pending_jobs:
+                job_id = job_info['job_id']
+                raw_posts_file_path = os.path.join(workspace_folder, job_info['raw_posts_file'])
+                
+                original_posts_chunk = None
+                if os.path.exists(raw_posts_file_path):
+                    if raw_posts_file_path.endswith('.jsonl'):
+                        with open(raw_posts_file_path, "r") as f:
+                            original_posts_chunk = [json.loads(line) for line in f]
+                    elif raw_posts_file_path.endswith('.csv'):
+                        with open(raw_posts_file_path, mode='r', newline='', encoding='utf-8') as f:
+                            reader = csv.DictReader(f)
+                            original_posts_chunk = list(reader)
 
-        job_duration = time.time() - start_time
-        utils.update_performance_log(job_duration, total_posts)
+                chunk_results = self.api_connector.download_batch_results(job_id, original_posts_chunk)
+                all_enriched_posts.extend(chunk_results)
 
-        if all_enriched_posts:
+            job_duration = time.time() - start_time
+            utils.update_performance_log(job_duration, total_posts)
+
+            if not all_enriched_posts:
+                logger.warning(f"No enriched posts received for {name}")
+                return []
+
             # Load the original raw data from the saved source file
             original_posts_map = {}
             original_posts_from_file = []
@@ -258,12 +297,10 @@ class BatchJobManager:
             else:
                 logger.warning(f"Could not find the original source file at {source_raw_filepath}. Reconstructing data.")
                 for post in all_enriched_posts:
-                    try:
+                    if 'url' in post:
                         original_posts_map[post['url']] = post
-                    except KeyError:
-                        logger.error(f"Post is missing a 'url' key, cannot be properly merged: {post}")
-                        continue
             
+            # Merge enriched data with original posts
             for enriched_post in all_enriched_posts:
                 original_url = enriched_post.get('url')
                 if original_url in original_posts_map:
@@ -275,5 +312,14 @@ class BatchJobManager:
             
             final_posts = list(original_posts_map.values())
 
-            self.state_manager.save_processed_data(final_posts, name, os.path.basename(source_raw_filepath))
+            # Save the consolidated results
+            self.state_manager.save_processed_data(final_posts, name, os.path.basename(source_raw_filepath) if source_raw_filepath else "batch_results.json")
+            logger.info(f"Successfully consolidated {len(final_posts)} posts for {name}")
             return final_posts
+            
+        except Exception as e:
+            logger.error(f"Failed to consolidate results for {competitor.get('name', 'unknown')}: {e}")
+            raise BatchJobError(
+                f"Result consolidation failed: {str(e)}",
+                details={"competitor": competitor.get('name'), "jobs_count": len(pending_jobs)}
+            )

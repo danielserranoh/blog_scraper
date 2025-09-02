@@ -9,3 +9,4 @@ from .transform import batch_manager
 from .load import export_manager
 from . import api_connector
 from . import utils
+from . import di_container

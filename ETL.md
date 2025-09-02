@@ -104,7 +104,7 @@ We follow a set of core principles that guide our architecture. They are designe
 
 3. Orchestrator then tells the EnrichmentManager to enrich the raw data it just received.
 
-4.EnrichmentManager decides whether to use live or batch mode.
+4. EnrichmentManager decides whether to use live or batch mode.
 
 5. EnrichmentManager calls the Live or calls BatchJobManager to handle the batch job lifecycle.
 

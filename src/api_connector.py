@@ -32,6 +32,7 @@ class GeminiAPIConnector:
     async def enrich_post_live(self, content, model_name, post_title="Unknown Post", headings=None, primary_competitors=None, dxp_competitors=None):
         """
         Calls the Gemini API asynchronously to get a summary and keywords for a single post.
+        Note: Content should already be preprocessed by ContentPreprocessor before calling this method.
         """
         if not self.client:
             return "N/A", "N/A", "N/A"
@@ -39,27 +40,122 @@ class GeminiAPIConnector:
         summary = "N/A"
         seo_keywords = "N/A"
         funnel_stage = "N/A"
+        
         prompt = utils.get_prompt("enrichment_instruction", content=content, headings=headings, primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
 
-        logger.info(f"Will enrich with the following prompt: {prompt} ")
-        for i in range(3): # Retry logic
+        logger.debug(f"Enriching post: '{post_title[:50]}...'")
+        logger.debug(f"  Content length: {len(content)} characters")
+        logger.debug(f"  Prompt length: {len(prompt)} characters")
+        
+        for attempt in range(3): # Retry logic
             try:
                 response = await self.client.aio.models.generate_content(
                     model=model_name,
-                    contents=prompt,
-                   # generation_config=types.GenerateContentConfig(response_mime_type="application/json")
+                    contents=prompt
                 )
-                parsed_json = json.loads(response.text)
+                
+                # Check if response has content
+                if not response or not hasattr(response, 'text') or not response.text:
+                    logger.warning(f"    Attempt {attempt+1}: API returned empty response for '{post_title}'")
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                    continue
+                
+                response_text = response.text.strip()
+                
+                # Check if response starts with AFC message (common issue)
+                if response_text.startswith("AFC is enabled"):
+                    logger.warning(f"    Attempt {attempt+1}: Response starts with AFC message, no actual content")
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                    continue
+                
+                # Try to parse as JSON
+                try:
+                    parsed_json = json.loads(response_text)
+                except json.JSONDecodeError as json_error:
+                    logger.warning(f"    Attempt {attempt+1}: JSON parsing failed for '{post_title}': {json_error}")
+                    
+                    # Try to extract JSON from response if it's wrapped in other text
+                    import re
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if json_match:
+                        try:
+                            parsed_json = json.loads(json_match.group(0))
+                            logger.debug(f"    Successfully extracted JSON from wrapped response")
+                        except json.JSONDecodeError:
+                            if attempt < 2:
+                                await asyncio.sleep(2 ** attempt)
+                            continue
+                    else:
+                        if attempt < 2:
+                            await asyncio.sleep(2 ** attempt)
+                        continue
+                
+                # Successfully parsed JSON - extract data
                 summary = parsed_json.get('summary', 'N/A')
                 seo_keywords = ', '.join(parsed_json.get('seo_keywords', []))
-                funnel_stage = parsed_json.get('funnel_stage', 'N/A') # <-- NEW: Get funnel_stage from response
-                logger.info(f"    Live enrichment successful for '{post_title}'")
+                funnel_stage = parsed_json.get('funnel_stage', 'N/A')
+                
+                logger.info(f"    ✓ Live enrichment successful for '{post_title}' (attempt {attempt+1})")
                 return summary, seo_keywords, funnel_stage
+                
             except Exception as e:
-                logger.error(f"    Live enrichment attempt {i+1} failed for '{post_title}': {e}")
-                await asyncio.sleep(2**i)
+                logger.warning(f"    Attempt {attempt+1}: API call failed for '{post_title}': {e}")
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
         
+        logger.error(f"    ❌ All enrichment attempts failed for '{post_title}' after 3 tries")
         return summary, seo_keywords, funnel_stage
+
+    def _prepare_content_for_api(self, content, post_title):
+        """
+        Prepares content for API consumption by cleaning and potentially truncating it.
+        """
+        if not content or content == 'N/A':
+            return content
+            
+        # Clean problematic characters
+        cleaned_content = content
+        
+        # Replace smart quotes and other problematic Unicode characters
+        char_replacements = {
+            ''': "'",  # Left single quotation mark
+            ''': "'",  # Right single quotation mark
+            '"': '"',  # Left double quotation mark  
+            '"': '"',  # Right double quotation mark
+            '—': '-',  # Em dash
+            '–': '-',  # En dash
+            '…': '...',  # Horizontal ellipsis
+        }
+        
+        for old_char, new_char in char_replacements.items():
+            cleaned_content = cleaned_content.replace(old_char, new_char)
+        
+        # Check content length and truncate if necessary
+        MAX_CONTENT_LENGTH = 6000  # Conservative limit for API + prompt
+        
+        if len(cleaned_content) > MAX_CONTENT_LENGTH:
+            logger.warning(f"Content for '{post_title}' is {len(cleaned_content)} chars, truncating to {MAX_CONTENT_LENGTH}")
+            
+            # Try to truncate at a sentence boundary
+            truncated = cleaned_content[:MAX_CONTENT_LENGTH]
+            last_period = truncated.rfind('.')
+            last_exclamation = truncated.rfind('!')
+            last_question = truncated.rfind('?')
+            
+            # Find the last sentence ending
+            last_sentence_end = max(last_period, last_exclamation, last_question)
+            
+            if last_sentence_end > MAX_CONTENT_LENGTH * 0.8:  # If we can keep 80% and end on sentence
+                cleaned_content = truncated[:last_sentence_end + 1] + " [Content truncated for API processing]"
+            else:
+                # Just truncate and add notice
+                cleaned_content = truncated + "... [Content truncated for API processing]"
+            
+            logger.info(f"Content truncated to {len(cleaned_content)} characters for '{post_title}'")
+        
+        return cleaned_content
 
     async def batch_enrich_posts_live(self, posts, model_name, primary_competitors=None, dxp_competitors=None):
         """
@@ -81,14 +177,34 @@ class GeminiAPIConnector:
         gemini_results = await asyncio.gather(*tasks)
 
         transformed_posts = []
+        failed_posts = []
+        
         for i, post in enumerate(posts):
             summary, seo_keywords, funnel_stage = gemini_results[i]
+            
+            # Check if enrichment actually failed (all values are N/A due to API failure)
+            if (summary == 'N/A' and seo_keywords == 'N/A' and funnel_stage == 'N/A' and 
+                post.get('content') and post.get('content') != 'N/A'):
+                # This indicates API failure, not missing content
+                failed_posts.append(post['title'])
+                post['enrichment_status'] = 'failed'
+            else:
+                post['enrichment_status'] = 'completed'
+                
             post['summary'] = summary
             post['seo_keywords'] = seo_keywords
             post['funnel_stage'] = funnel_stage
             transformed_posts.append(post)
 
         logger.info(f"Live enrichment of {len(posts)} posts completed in {time.time() - start_time:.2f} seconds.")
+        
+        if failed_posts:
+            logger.warning(f"⚠️  {len(failed_posts)} post(s) failed enrichment and will need re-processing:")
+            for title in failed_posts[:3]:  # Show first 3 failed titles
+                logger.warning(f"  - {title}")
+            if len(failed_posts) > 3:
+                logger.warning(f"  ... and {len(failed_posts) - 3} more")
+            logger.warning("💡 Run 'python main.py enrich' later to retry failed enrichments")
 
         # Sort the final list
         posts_with_dates = [p for p in transformed_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
@@ -159,7 +275,7 @@ class GeminiAPIConnector:
     # <--- UPDATED: The function will now be able to reconstruct the post using metadata if the original source file is missing. --->
     def download_batch_results(self, job_id, original_posts=None):
         """
-        Downloads and processes batch job results.
+        Downloads and processes batch job results, including merging chunked content.
         """
         if not self.client:
             return original_posts or []
@@ -200,9 +316,9 @@ class GeminiAPIConnector:
                         'publication_date': metadata.get('publication_date', 'N/A'),
                         'content': 'N/A (Reconstructed from batch result)',
                         'seo_meta_keywords': metadata.get('seo_meta_keywords', 'N/A'),
-                        # Include other metadata fields to ensure full reconstruction
                         'headings': metadata.get('headings', []),
-                        'schemas': metadata.get('schemas', [])
+                        'schemas': metadata.get('schemas', []),
+                        'content_processing': metadata.get('content_processing', {})
                     }
 
                 response_data = result_json.get('response', {})
@@ -219,17 +335,22 @@ class GeminiAPIConnector:
                             except json.JSONDecodeError: pass
 
                     if parsed_json:
-                        # print(parsed_json)
                         post['summary'] = parsed_json.get('summary', 'N/A')
                         post['seo_keywords'] = ', '.join(parsed_json.get('seo_keywords', []))
-                        post['funnel_stage'] = parsed_json.get('funnel_stage', 'N/A') # <-- NEW: Get funnel_stage from response
+                        post['funnel_stage'] = parsed_json.get('funnel_stage', 'N/A')
+                        post['enrichment_status'] = 'completed'
                     else:
                         post['summary'], post['seo_keywords'], post['funnel_stage'] = 'N/A', 'N/A', 'N/A'
+                        post['enrichment_status'] = 'failed'
                 
                 transformed_posts.append(post)
 
-            posts_with_dates = [p for p in transformed_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
-            posts_without_dates = [p for p in transformed_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
+            # Merge chunked results back together
+            from src.transform.content_preprocessor import ContentPreprocessor
+            merged_posts = ContentPreprocessor.merge_chunked_results(transformed_posts)
+
+            posts_with_dates = [p for p in merged_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
+            posts_without_dates = [p for p in merged_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
             posts_with_dates.sort(key=lambda x: datetime.strptime(x['publication_date'], '%Y-%m-%d'), reverse=True)
             
             return posts_with_dates + posts_without_dates
@@ -277,11 +398,13 @@ class GeminiAPIConnector:
         """
         Creates a JSONL formatted string from a list of post dictionaries,
         adhering to the correct Gemini API schema.
+        Note: Posts should already be preprocessed by ContentPreprocessor.
         """
         jsonl_lines = []
         for i, post in enumerate(posts):
-            if post.get('content') and post.get('content') != 'N/A':
-                prompt = utils.get_prompt("enrichment_instruction", content=post['content'], headings=post.get('headings'), primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
+            content = post.get('content', '')
+            if content and content != 'N/A':
+                prompt = utils.get_prompt("enrichment_instruction", content=content, headings=post.get('headings'), primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
                 if not prompt: continue
                 
                 # Create a metadata object to embed in the request payload
@@ -291,7 +414,8 @@ class GeminiAPIConnector:
                     "publication_date": post.get('publication_date'),
                     "seo_meta_keywords": post.get('seo_meta_keywords'),
                     "headings": post.get('headings', []),
-                    "schemas": post.get('schemas', [])
+                    "schemas": post.get('schemas', []),
+                    "content_processing": post.get('content_processing', {})  # Include preprocessing info
                 }
                 
                 request_payload = {

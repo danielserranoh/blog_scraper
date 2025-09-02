@@ -68,6 +68,13 @@ async def handle_pipeline_result(result):
                 print(colored(f"  Posts processed: {result['posts_processed']}", 'cyan'))
             elif 'results_count' in result:
                 print(colored(f"  Results loaded: {result['results_count']}", 'cyan'))
+            
+            # Show enrichment failure warnings and recommendations
+            if result.get('enrichment_failures', 0) > 0:
+                failures = result['enrichment_failures']
+                print(colored(f"⚠️  {failures} enrichment(s) failed due to API issues", 'yellow'))
+                if result.get('recommendation'):
+                    print(colored(f"💡 {result['recommendation']}", 'blue'))
 
 @click.group()
 def cli():

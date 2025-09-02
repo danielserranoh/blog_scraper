@@ -5,10 +5,12 @@ import os
 import csv
 import logging
 from typing import List, Dict, Any, Optional, Tuple
+from .content_preprocessor import ContentPreprocessor
 from .live import transform_posts_live
 from .batch_manager import BatchJobManager
 from src.state_management.state_manager import StateManager
 from src.exceptions import EnrichmentError
+
 from src import utils
 
 logger = logging.getLogger(__name__)
@@ -59,21 +61,29 @@ class EnrichmentManager:
         try:
             competitor_name = competitor['name']
             
-            if len(posts_to_enrich) < batch_threshold:
-                logger.info(f"Processing {len(posts_to_enrich)} posts in LIVE mode...")
-                enriched_posts = await transform_posts_live(posts_to_enrich, live_model)
+            # Preprocess content for API consumption
+            logger.info(f"Preprocessing {len(posts_to_enrich)} posts for enrichment")
+            processed_posts = ContentPreprocessor.prepare_posts_for_enrichment(posts_to_enrich)
+            
+            # Check if preprocessing created chunks (affects our batch threshold decision)
+            if len(processed_posts) < batch_threshold:
+                logger.info(f"Processing {len(processed_posts)} items in LIVE mode...")
+                enriched_posts = await transform_posts_live(processed_posts, live_model)
                 if not enriched_posts:
                     return None
                 
+                # Merge chunked results back together if necessary
+                merged_posts = ContentPreprocessor.merge_chunked_results(enriched_posts)
+                
                 # Merge the new enriched data with the original posts
-                enriched_map = {post['url']: post for post in enriched_posts}
+                enriched_map = {post['url']: post for post in merged_posts}
                 final_posts = [enriched_map.get(post['url'], post) for post in all_posts_for_merge]
                 return final_posts
             else:
-                logger.info(f"Processing {len(posts_to_enrich)} posts in BATCH mode...")
+                logger.info(f"Processing {len(processed_posts)} items in BATCH mode...")
                 await self.batch_manager.submit_new_jobs(
                     competitor, 
-                    posts_to_enrich, 
+                    processed_posts,  # Use preprocessed posts
                     batch_model, 
                     self.app_config,
                     source_raw_filepath,
@@ -94,7 +104,7 @@ class EnrichmentManager:
         """
         Loads all posts from the 'processed' directory and returns a tuple of:
         1. All posts from file
-        2. Posts that are missing enrichment data
+        2. Posts that are missing enrichment data OR failed previous enrichment
         
         Args:
             competitor_name: Name of the competitor
@@ -108,14 +118,40 @@ class EnrichmentManager:
         try:
             processed_posts = self.state_manager.load_processed_data(competitor_name)
             posts_to_enrich = []
+            failed_count = 0
+            missing_count = 0
             
             for post in processed_posts:
+                # Check if post needs enrichment (missing data OR failed status)
+                needs_enrichment = False
+                reason = []
+                
                 if (post.get('summary') in [None, 'N/A', ''] or 
                     post.get('seo_keywords') in [None, 'N/A', ''] or
                     post.get('funnel_stage') in [None, 'N/A', '']):
+                    needs_enrichment = True
+                    reason.append("missing data")
+                    missing_count += 1
+                
+                if post.get('enrichment_status') == 'failed':
+                    needs_enrichment = True
+                    reason.append("previous failure")
+                    failed_count += 1
+                
+                if needs_enrichment:
                     posts_to_enrich.append(post)
+                    logger.debug(f"Post '{post.get('title', 'unknown')}' needs enrichment: {', '.join(reason)}")
+            
+            # Provide detailed logging about what needs enrichment
+            if posts_to_enrich:
+                logger.info(f"Found {len(posts_to_enrich)} posts needing enrichment:")
+                if missing_count > 0:
+                    logger.info(f"  - {missing_count} posts with missing enrichment data")
+                if failed_count > 0:
+                    logger.info(f"  - {failed_count} posts with previous enrichment failures")
+            else:
+                logger.info(f"All {len(processed_posts)} posts are fully enriched")
                     
-            logger.info(f"Found {len(posts_to_enrich)} posts needing enrichment out of {len(processed_posts)} total")
             return processed_posts, posts_to_enrich
             
         except Exception as e:

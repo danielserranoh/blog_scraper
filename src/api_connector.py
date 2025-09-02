@@ -41,7 +41,7 @@ class GeminiAPIConnector:
         funnel_stage = "N/A"
         prompt = utils.get_prompt("enrichment_instruction", content=content, headings=headings, primary_competitors=primary_competitors, dxp_competitors=dxp_competitors)
 
-        plogger.info(f"Will enrich with the following prompt: {prompt} ")
+        logger.info(f"Will enrich with the following prompt: {prompt} ")
         for i in range(3): # Retry logic
             try:
                 response = await self.client.aio.models.generate_content(

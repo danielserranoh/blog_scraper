@@ -15,7 +15,7 @@ from . import live
 from src import utils
 from src.state_management.state_manager import StateManager
 from src.api_connector import GeminiAPIConnector
-from src.di_container import BatchJobError
+from src.exceptions import BatchJobError
 
 logger = logging.getLogger(__name__)
 

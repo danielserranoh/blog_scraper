@@ -6,8 +6,8 @@ import asyncio
 import os
 from typing import Dict, Any, Optional
 
-from .di_container import (
-    DIContainer, 
+from .di_container import DIContainer
+from .exceptions import (
     ETLError, 
     ScrapingError, 
     EnrichmentError, 

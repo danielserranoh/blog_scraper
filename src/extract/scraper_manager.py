@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from . import extract_posts_in_batches
 from src.state_management.state_manager import StateManager
 from src.extract._common import ScrapeStats
-from src.di_container import ScrapingError
+from src.exceptions import ScrapingError
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from .live import transform_posts_live
 from .batch_manager import BatchJobManager
 from src.state_management.state_manager import StateManager
-from src.di_container import EnrichmentError
+from src.exceptions import EnrichmentError
 from src import utils
 
 logger = logging.getLogger(__name__)

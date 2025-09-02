@@ -147,20 +147,36 @@ async def _handle_enrich_raw(container: DIContainer, competitors: list, live_mod
     try:
         total_enriched = 0
         for competitor in competitors:
+            # Load both raw and processed data to find the diff
             raw_posts = container.state_manager.load_raw_data(competitor['name'])
+            processed_posts = container.state_manager.load_processed_data(competitor['name'])
             
             if not raw_posts:
                 logger.info(f"No raw data found for '{competitor['name']}'.")
                 continue
+            
+            # Create a set of processed URLs for efficient lookup
+            processed_urls = {post.get('url') for post in processed_posts if post.get('url')}
+            
+            # Find raw posts that haven't been processed yet
+            unprocessed_posts = [
+                post for post in raw_posts 
+                if post.get('url') and post.get('url') not in processed_urls
+            ]
+            
+            if not unprocessed_posts:
+                logger.info(f"All raw posts for '{competitor['name']}' have already been processed.")
+                continue
                 
-            logger.info(f"Found {len(raw_posts)} raw posts to enrich for '{competitor['name']}'.")
+            logger.info(f"Found {len(unprocessed_posts)} unprocessed posts out of {len(raw_posts)} total raw posts for '{competitor['name']}'.")
             
             latest_raw_filepath = container.state_manager.get_latest_raw_filepath(competitor['name'])
             
-            final_posts = await container.enrichment_manager.enrich_posts(
+            # Enrich only the unprocessed posts
+            enriched_posts = await container.enrichment_manager.enrich_posts(
                 competitor,
-                raw_posts,
-                raw_posts,
+                unprocessed_posts,
+                unprocessed_posts,
                 batch_threshold,
                 live_model,
                 batch_model,
@@ -168,9 +184,34 @@ async def _handle_enrich_raw(container: DIContainer, competitors: list, live_mod
                 source_raw_filepath=latest_raw_filepath
             )
             
-            if final_posts:
-                container.state_manager.save_processed_data(final_posts, competitor['name'], os.path.basename(latest_raw_filepath) if latest_raw_filepath else "raw_enrichment.json")
-                total_enriched += len(final_posts)
+            if enriched_posts:
+                # Merge enriched posts with existing processed posts
+                all_processed_posts = processed_posts + enriched_posts
+                
+                # Remove duplicates and sort by URL for consistency
+                unique_posts_map = {post['url']: post for post in all_processed_posts if post.get('url')}
+                final_posts = list(unique_posts_map.values())
+                
+                # Sort by publication date if available
+                posts_with_dates = [p for p in final_posts if p.get('publication_date') and p['publication_date'] != 'N/A']
+                posts_without_dates = [p for p in final_posts if not p.get('publication_date') or p['publication_date'] == 'N/A']
+                
+                try:
+                    from datetime import datetime
+                    posts_with_dates.sort(key=lambda x: datetime.strptime(x['publication_date'], '%Y-%m-%d'), reverse=True)
+                except (ValueError, TypeError):
+                    # If date parsing fails, don't sort
+                    pass
+                
+                final_sorted_posts = posts_with_dates + posts_without_dates
+                
+                container.state_manager.save_processed_data(
+                    final_sorted_posts, 
+                    competitor['name'], 
+                    os.path.basename(latest_raw_filepath) if latest_raw_filepath else "raw_enrichment_merged.json"
+                )
+                total_enriched += len(enriched_posts)
+                logger.info(f"Enriched {len(enriched_posts)} new posts and merged with {len(processed_posts)} existing processed posts for '{competitor['name']}'")
 
         logger.info(f"Raw enrichment process completed - {total_enriched} posts processed")
         return {"success": True, "operation": "enrich_raw", "posts_enriched": total_enriched}

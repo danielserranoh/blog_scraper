@@ -8,108 +8,263 @@ Think of our data pipeline like a chef preparing a meal.
 * **Transformation (The Middle of the Pipeline):** This is the chopping and seasoning of the ingredients. Our pipeline takes the raw posts and enriches them with new information, like summaries and SEO keywords from the Gemini API.
 * **Loading (The End of the Pipeline):** This is plating the final dish to be served. The pipeline takes the finished posts and formats them into a final file, like a Markdown or CSV document, ready for use.
 
+[Diagram](./BlogScraper_Architcture.pdf)
 ***
 
-## A Manager-Based Architecture
+## Dependency Injection Architecture
 
-To keep our pipeline organized and robust, we've designed it like a team of specialized managers. Each manager has one job and one job only, which makes the entire process predictable and easy to manage.
+To keep our pipeline organized, testable, and maintainable, we've implemented a **Dependency Injection (DI) Container** that manages all system dependencies. This modern architectural pattern ensures consistent initialization and makes the entire system more robust.
 
-* **Scraper Manager:** This manager's job is to get the raw data from the websites. It hands the posts to the next manager when it's done, without worrying about what happens to them next.
-* **Enrichment Manager:** This manager takes the raw posts and makes them better. Its only job is to get a summary and keywords for each post, deciding whether to do it live or in a batch.
-* **Export Manager:** This manager takes the final, processed data and prepares it to be shared with the world. Its only job is to format the data into a file, like a CSV or a Markdown document.
-* **State Manager:** This model centralizes all logic for saving and retrieving data across the entire pipeline. It acts as a single source of truth for all persistent data, regardless of which stage of the ETL process it's in.
+### **DIContainer (`src/di_container.py`)**
+The central hub that manages the lifecycle of all system components:
 
-***
+* **Configuration Management**: Loads and validates all application and competitor configurations
+* **Lazy Initialization**: Creates manager instances only when needed, reducing startup time
+* **Dependency Resolution**: Ensures proper order of component initialization
+* **Error Handling**: Provides structured exception management for the entire system
 
-***
-Data Management
+### **Manager-Based Architecture**
 
-The State Manager sould be capable of string the transactional data in different formats and supports.
-Hence, the State Manager is designed to use different adaptors to deal with this.
+Each manager has one specialized responsibility, following the **Single Responsibility Principle**:
 
-Additionally, it uses a Multi-File (Structured by Job) storyng system.
-    **Pros:**
-
-    - Highly Scalable: Each scrape or enrichment job creates a new, small file, which is much faster to read and write. This makes the system scalable to a large number of competitors and posts.
-
-    - Resilience: A write failure only affects a single file, not the entire dataset. This aligns with your Golden Rules by making the pipeline more resilient to errors.
-
-    - Clear State Management: Each file represents a single, complete job, which makes it easier to debug and track the state of your pipeline.the model to store the data isa 
-
-
-## Blog Structural Patterns
-
-This project uses a powerful, pattern-based system to scrape different blogs. This means we've separated the "structure" of a blog from the code itself. Instead of writing custom code for every new blog, we just need to identify which of the following patterns it follows and add a few details to our configuration file.
-
-We have currently developed scrapers for three of these patterns.
-
-* **Multi-Category Pagination**: This pattern is common on content-rich blogs organized into distinct sections, like `terminalfour`. You'll see a main blog page that links to several different category pages, and each category page has its own pagination.
-* **Single-List Pagination**: A simpler structure, used by blogs like `modern campus`, that presents all of its content in a single chronological stream with a single set of pagination controls at the bottom.
-* **Single-Page Filter**: This is a modern approach used by blogs like `squiz`. All or a very large number of posts are loaded at once, and when you click a filter, the list is instantly filtered using JavaScript. The scraper only needs to make a single request to get all the posts.
-
-### Other Potential Patterns
-
-For future development, we have identified other common patterns that could be implemented to make the scraper even more powerful:
-
-* **Infinite Scroll**: New posts are loaded automatically as the user scrolls down the page.
-* **Date-Based Archives**: Content is organized chronologically, with URLs often following a pattern like `example.com/blog/2025/08/`.
-* **Static Site with a Search Index File**: The entire site's content is indexed in a single `.json` file that is loaded when the page starts.
+* **Scraper Manager**: Orchestrates the extraction phase and handles all scraping workflows
+* **Enrichment Manager**: Decides between live/batch processing and manages content transformation
+* **Batch Job Manager**: Handles the complete lifecycle of Gemini batch jobs
+* **Export Manager**: Manages data export to various formats
+* **State Manager**: Centralizes all data persistence operations with pluggable storage adapters
 
 ***
 
-## Process (New CLI)
-The command `python main.py scrape --competitor "oho"` triggers a chain of functions that orchestrate the entire scrape and enrichment pipeline. The `main.py` file now uses the `click` library to define a clear, command-based workflow.
+## Content Processing Pipeline
 
-Here is a step-by-step list of the primary functions that are called in order:
+### **Content Preprocessing (`src/content_preprocessor.py`)**
+A sophisticated system that prepares raw scraped content for API consumption:
 
-1.  **`main.py -> cli()`**: The application starts here. The `click` library parses the command-line arguments and passes control to the specified command function, such as `scrape`.
-2.  **`main.py -> scrape()`**: This function prepares the arguments into a format that the `run_pipeline` function can use and then starts the asynchronous event loop by calling `asyncio.run(run_pipeline(args))`.
-3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `scrape` flag, calls the `ScraperManager` to begin the scraping workflow.
-4.  **`scraper_manager.py -> run_scrape_and_submit()`**: This method orchestrates the extraction phase. It calls the `extract_posts_in_batches` function to start the scraping process, and then passes the results to the `EnrichmentManager` and the `StateManager` that stores the results in the `data/raw/{competitor}/` folder.
-5.  **`extract/__init__.py -> extract_posts_in_batches()`**: This is a router function that, based on the competitor's configuration, imports and calls the correct scraping pattern module. For "oho," it calls the `multi_category` scraper.
-6.  **`multi_category.py -> scrape()`**: This function is the core of the scraper for "oho." It uses `httpx` to make asynchronous network requests to the blog's category pages. It then extracts the post links from the HTML and, for each link, creates an asynchronous task to get the post's details.
-7.  **`_common.py -> _get_post_details()`**: This is a low-level function that performs the actual scraping of an individual post. It uses `httpx` to get the post's content and `BeautifulSoup` to parse the HTML and extract the title, date, content, and headings.
-8.  **`scraper_manager.py -> EnrichmentManager.enrich_posts()`**: After a batch of posts has been scraped, the `ScraperManager` saves the raw data and then calls the `enrich_posts` method to begin the transformation phase.
-9.  **`enrichment_manager.py -> enrich_posts()`**: This method determines whether to use live or batch mode. Since the `--scrape-all` flag is used, it will likely choose batch mode and call the `BatchJobManager`.
-10. **`batch_manager.py -> submit_new_jobs()`**: This method prepares the posts for the Gemini API. It chunks the posts, creates a JSONL file, and calls the `GeminiAPIConnector` to submit the batch job.
-11. **`api_connector.py -> create_batch_job()`**: This function is the final step. It uploads the JSONL file to the Gemini API and submits the batch job for processing, which is when the enrichment actually happens on the server side.
+#### **Content Cleaning**
+- **Unicode Normalization**: Converts smart quotes (`'` `'` `"` `"`) to standard quotes
+- **Special Character Handling**: Transforms em dashes (—), en dashes (–), ellipsis (…)
+- **HTML Entity Removal**: Cleans residual HTML entities and non-printable characters
+- **Whitespace Optimization**: Normalizes excessive whitespace and formatting
 
-The command `python main.py check-job` triggers a chain of functions that orchestrate the batch job-checking workflow. Here is a step-by-step list of the primary functions that are called in order:
+#### **Intelligent Content Chunking**
+For posts exceeding API limits (>6,000 characters):
+- **Sentence Boundary Detection**: Splits content at natural sentence endings
+- **Context Preservation**: Adds continuation markers ("Continued from previous section")
+- **Overlap Management**: Maintains 200-character overlap between chunks for context
+- **Smart Reconstruction**: Merges chunked results back into coherent posts
 
-1.  **`main.py -> cli()`**: The application starts here. The `click` library parses the command-line arguments and passes control to the `check_job` function.
-2.  **`main.py -> check_job()`**: This function prepares the arguments into a `SimpleNamespace` object and then starts the asynchronous event loop by calling `asyncio.run(run_pipeline(args))`.
-3.  **`orchestrator.py -> run_pipeline(args)`**: This is the central conductor. It loads the configuration and, seeing the `--check-job` flag, calls the `check_and_load_results` method on the `BatchJobManager` for each competitor.
-4.  **`batch_manager.py -> check_and_load_results()`**: This method orchestrates the job-checking process. It first reads the `pending_jobs.json` file to get a list of pending jobs, and then it calls the `_poll_job_statuses` method to get the status of each job.
-5.  **`batch_manager.py -> _poll_job_statuses()`**: This function loops through the list of pending jobs and, for each job, calls the `check_batch_job` method on the `GeminiAPIConnector` to get the job's current status.
-6.  **`api_connector.py -> check_batch_job()`**: This is the final step. It makes a direct call to the Gemini API to get the status of a specific batch job.
-7.  **`batch_manager.py -> _consolidate_and_save_results()`**: If all the jobs have succeeded, this method is called. It downloads the results from the API, merges them with the original data, and saves the final processed data.
-8.  **`batch_manager.py -> _cleanup_workspace()`**: Finally, after the results have been successfully saved, this method deletes all the temporary files from the workspace, completing the process.
+#### **Result Merging**
+- **Summary Integration**: Combines summaries from multiple chunks
+- **Keyword Deduplication**: Merges and deduplicates SEO keywords intelligently
+- **Funnel Stage Analysis**: Uses most frequent stage across chunks
+- **Metadata Preservation**: Maintains all original post metadata
+
+***
+
+## Enhanced Error Handling System
+
+### **Structured Exception Hierarchy**
+Designed for both human operators and future LLM orchestrators:
+
+```python
+ETLError (Base)
+├── ConfigurationError    # Configuration loading/validation failures
+├── ScrapingError        # Website extraction issues  
+├── EnrichmentError      # API and content processing failures
+├── StateError           # Data persistence problems
+├── BatchJobError        # Batch processing lifecycle issues
+└── ExportError          # Data export formatting problems
+```
+
+### **LLM-Ready Error Responses**
+All exceptions include structured data for machine consumption:
+```python
+{
+    "error": True,
+    "error_code": "ENRICHMENT_ERROR",
+    "message": "Failed to enrich posts: API timeout",
+    "details": {
+        "competitor": "terminalfour",
+        "posts_count": 15,
+        "model": "gemini-2.0-flash"
+    },
+    "error_type": "EnrichmentError"
+}
+```
+
+### **Failure Recovery System**
+- **Enrichment Status Tracking**: Posts marked as 'completed', 'failed', or 'pending'
+- **Smart Retry Logic**: `enrich` command automatically identifies and retries failures
+- **User Guidance**: Clear recommendations provided for recovery actions
+- **State Preservation**: No data loss even during catastrophic failures
+
+***
+
+## Intelligent Processing Modes
+
+### **Live Mode (< 10 posts by default)**
+- **Real-time Processing**: Immediate API calls with async concurrency
+- **Faster Results**: No waiting for batch job processing
+- **Immediate Feedback**: Instant success/failure notifications
+- **Content Preprocessing**: Automatic cleaning and chunking applied
+
+### **Batch Mode (≥ 10 posts by default)**  
+- **Cost Optimization**: Leverages Gemini's batch API pricing
+- **Large Scale Processing**: Handles hundreds of posts efficiently
+- **Job Lifecycle Management**: Complete submission → polling → result processing
+- **Chunked File Handling**: Automatically splits large jobs across multiple batch requests
+
+### **Differential Processing**
+The system intelligently processes only what needs attention:
+- **New Content Detection**: Compares raw vs processed data to find unprocessed posts
+- **Failed Enrichment Recovery**: Identifies and retries previously failed API calls  
+- **Resource Optimization**: Avoids redundant processing of already-enriched content
+
+***
+
+## Data Management Evolution
+
+### **State Manager with Adapter Pattern**
+The State Manager now uses pluggable storage adapters, making it easy to switch between storage formats:
+
+**Current Adapters:**
+- **JSON Adapter**: Human-readable format with rich metadata preservation
+- **CSV Adapter**: Tabular format for analysis tools
+
+**Future Extensibility:**
+- Database adapters (PostgreSQL, MongoDB)
+- Cloud storage adapters (S3, Google Cloud Storage)  
+- Real-time streaming adapters
+
+### **Multi-File Storage Strategy**
+- **Highly Scalable**: Each scrape creates a timestamped file for easy management
+- **Failure Resilient**: Isolated file operations prevent data corruption
+- **Clear State Tracking**: Easy to identify and debug individual scraping sessions
+- **Performance Optimized**: Small, focused files load much faster than monolithic datasets
+
+***
+
+## Blog Structural Patterns (Enhanced)
+
+The pattern-based scraping system has been refined for better maintainability:
+
+### **Current Patterns**
+* **Multi-Category Pagination**: Content organized into distinct sections with independent pagination
+* **Single-List Pagination**: Chronological content stream with unified pagination
+* **Single-Page Filter**: JavaScript-based content filtering (all posts loaded at once)
+
+### **Pattern Configuration Schema**
+```json
+{
+    "name": "competitor_name",
+    "structure_pattern": "multi_category",
+    "pagination_pattern": {
+        "type": "linked_path",
+        "selector": "a.next-page"
+    },
+    "content_selectors": {
+        "post_list": "article.post a",
+        "title": "h1.post-title", 
+        "date": "time[datetime]",
+        "content": "div.post-content"
+    }
+}
+```
+
+### **Future Patterns** 
+* **Infinite Scroll**: Dynamic loading as user scrolls
+* **Date-Based Archives**: Content organized by publication date
+* **API-Based Sites**: Direct API integration where available
+* **SPA (Single Page Applications)**: JavaScript-heavy sites requiring browser automation
+
+***
+
+## Enhanced CLI Process Flow
+
+The command-line interface now provides rich feedback and intelligent guidance:
+
+### **`python main.py get-posts --competitor "terminalfour"`**
+
+1. **DIContainer Initialization**: Loads configurations and creates manager instances
+2. **Content Extraction**: ScraperManager orchestrates pattern-based scraping
+3. **Content Preprocessing**: Automatic cleaning, chunking, and optimization  
+4. **Intelligent Routing**: EnrichmentManager decides live vs batch mode
+5. **API Processing**: Content sent to Gemini API for enrichment
+6. **Result Integration**: Chunked results merged back into complete posts
+7. **State Persistence**: Final enriched data saved with comprehensive metadata
+8. **User Feedback**: Clear success metrics and any failure guidance
+
+### **`python main.py enrich --competitor "contentsis"`**
+
+1. **Differential Analysis**: Identifies posts needing enrichment (missing data OR previous failures)
+2. **Content Preprocessing**: Prepares content for API consumption
+3. **Smart Processing**: Routes to appropriate enrichment mode
+4. **Failure Recovery**: Automatically retries previously failed enrichments
+5. **Result Merging**: Combines new results with existing processed data
+
+### **`python main.py check-job --competitor "modern-campus"`**
+
+1. **Job Discovery**: Finds pending batch jobs in workspace
+2. **Status Polling**: Checks job completion status with Gemini API
+3. **Result Processing**: Downloads and processes completed jobs
+4. **Content Reconstruction**: Merges chunked results back into complete posts  
+5. **State Updates**: Saves final results and cleans up temporary files
 
 ***
 
 ## Our "Golden Rules"
 
+
 We follow a set of core principles that guide our architecture. They are designed to ensure our project remains robust, reliable, and easy to understand.
 
 * **Rule #1: The Configuration is the Source of Truth.** This rule means all the tricky, website-specific details live in one place (a JSON file). So, if you need to scrape a new website, you don't have to touch the Python code—you just update the instructions in the configuration file. This keeps our code simple and clean.
-* **Rule #2: The Orchestrator Manages the "What", Managers Handle the "How".** The main `orchestrator.py` file is a simple director. It tells the managers what to do (`scrape this website`, `check for pending jobs`) but doesn't get involved in the details of how to do it. The managers handle all the complex, low-level tasks, leaving the orchestrator clean and readable.
-* **Rule #3: The API Connector is the Single Gateway to Gemini.** Our entire project talks to the Gemini API through one single door. If anything changes with the API, we only have to change the code behind that one door, and everything else in the project will continue to work. This makes our code much more reliable and easier to maintain.
-* **Rule #4: We care about In-Progress Work.** Our pipeline is designed to be resilient. It carefully tracks every piece of work in a special folder. If the script fails, the next time it runs, it can safely pick up exactly where it left off, so no work is ever lost.
+
+### **Rule #2: Dependency Injection Over Direct Instantiation**
+All system components are managed through the DI container, ensuring consistent initialization, easier testing, and better maintainability.
+
+### **Rule #3: Content Preprocessing is Centralized** 
+The Orchestrator Manages the "What", Managers Handle the "How". All content preparation for API consumption happens in one place, ensuring consistent behavior across live and batch processing modes. Our entire project talks to the Gemini API through one single door. If anything changes with the API, we only have to change the code behind that one door, and everything else in the project will continue to work.
+
+### **Rule #4: Errors are Structured for Machine Consumption**
+All exceptions include structured, machine-readable data designed for future LLM orchestrator integration.
+
+### **Rule #5: Processing is Differential and Intelligent**
+The system only processes what needs attention, avoiding redundant API calls and optimizing resource usage.
+
+### **Rule #6: State is Preserved Through All Failures**
+Comprehensive state tracking ensures no work is ever lost, and clear recovery paths are always available.
+
+***
+
+## Architecture Flow Diagram
+
+```
+CLI Command
+    ↓
+DIContainer (Dependency Resolution)
+    ↓
+Orchestrator (Workflow Coordination)
+    ↓
+┌─────────────────┬─────────────────┬─────────────────┐
+│   Extract       │   Transform     │     Load        │
+│                 │                 │                 │
+│ ScraperManager  │ EnrichmentMgr   │ ExportManager   │
+│       ↓         │       ↓         │       ↓         │
+│ Pattern Scrapers│ ContentPreproc  │ Format Exports  │
+│       ↓         │       ↓         │       ↓         │
+│ StateManager    │ Live/BatchMgr   │ File/GSheets    │
+│   (Raw Data)    │       ↓         │                 │
+│                 │ APIConnector    │                 │
+│                 │       ↓         │                 │
+│                 │ StateManager    │                 │
+│                 │ (Processed)     │                 │
+└─────────────────┴─────────────────┴─────────────────┘
+```
+
+This architecture is designed to be **LLM-orchestrator ready**, with structured interfaces, comprehensive error handling, and machine-readable responses throughout the entire pipeline.
 
 
 
-1. `Orchestrator` tells `ScraperManager` to scrape a website.
 
-2. ScraperManager scrapes the data and returns the raw posts and their file path to the Orchestrator.
 
-3. Orchestrator then tells the EnrichmentManager to enrich the raw data it just received.
 
-4. EnrichmentManager decides whether to use live or batch mode.
-
-5. EnrichmentManager calls the Live or calls BatchJobManager to handle the batch job lifecycle.
-
-6. Live or BatchJobManager reports to the EnrichmentManager that the job is complete.
-
-7. EnrichmentManager reports the processed data back to the Orchestrator.
-
-8. Orchestrator then tells the StateManager to save the final processed data.

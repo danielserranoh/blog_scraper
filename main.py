@@ -182,7 +182,7 @@ def check_job(competitor):
     asyncio.run(run())
 
 @cli.command()
-@click.option('--format', '-f', 'export_format', type=click.Choice(['txt', 'json', 'md', 'gsheets', 'csv']), required=True, help='Export the data to a specified format.')
+@click.option('--format', '-f', 'export_format', type=click.Choice(['txt', 'json', 'md', 'strategy-brief', 'content-gaps', 'gsheets', 'csv']), required=True, help='Export the data to a specified format.')
 @click.option('--competitor', '-c', type=str, help='Specify a single competitor to export.')
 def export(export_format, competitor):
     """Export the latest data to a file."""

@@ -30,7 +30,7 @@ Each manager has one specialized responsibility, following the **Single Responsi
 * **Scraper Manager**: Orchestrates the extraction phase and handles all scraping workflows
 * **Enrichment Manager**: Decides between live/batch processing and manages content transformation
 * **Batch Job Manager**: Handles the complete lifecycle of Gemini batch jobs
-* **Export Manager**: Manages data export to various formats
+* **Export Manager**: Manages data export to various formats with competitive intelligence capabilities
 * **State Manager**: Centralizes all data persistence operations with pluggable storage adapters
 
 ***
@@ -262,6 +262,106 @@ Orchestrator (Workflow Coordination)
 ```
 
 This architecture is designed to be **LLM-orchestrator ready**, with structured interfaces, comprehensive error handling, and machine-readable responses throughout the entire pipeline.
+
+***
+
+## Enhanced Export System for Content Strategy Intelligence
+
+### **Strategic Export Formats**
+
+The export system has been enhanced to support content strategy workflows with intelligent competitive analysis:
+
+#### **Strategy Brief Export (`--format strategy-brief`)**
+Generates executive-level competitive intelligence reports with:
+- **Market Share Analysis**: Quantified competitor positioning and content volume distribution
+- **Publishing Velocity Benchmarks**: Industry averages and activity trend indicators
+- **Content Focus Identification**: Funnel stage distribution analysis per competitor
+- **Strategic Opportunities**: Data-driven recommendations for content strategy optimization
+- **Competitive Positioning**: Relative market analysis with actionable insights
+
+#### **Content Gap Analysis (`--format content-gaps`)**
+Identifies strategic content opportunities through:
+- **Topic Coverage Mapping**: Cross-competitor analysis revealing underserved content areas
+- **Funnel Stage Gap Detection**: Stage-specific coverage analysis highlighting strategic weaknesses
+- **Content Format Opportunities**: Long-form vs. short-form distribution analysis
+- **Market Coverage Ratios**: Quantified opportunity scoring for strategic prioritization
+
+#### **Enhanced Markdown Export (`--format md`)**
+Standard markdown enhanced with competitive intelligence:
+- **Intelligence Overview**: Market metrics, trend analysis, and competitive landscape summary
+- **Strategic Content Organization**: Posts grouped by competitor with activity indicators
+- **Content Depth Analysis**: Length categorization (📖 Long-form, 📄 Medium, 📝 Short) and structure insights  
+- **Publishing Trends**: 30-day activity windows with velocity trend analysis
+- **Strategic Metadata**: Funnel stage indicators, technical implementation details
+
+### **Export Architecture**
+
+#### **Competitive Intelligence Engine**
+```python
+# Market analysis components
+- Competitor market share calculation
+- Publishing velocity trend analysis
+- Content format distribution analysis
+- Funnel stage coverage mapping
+- Topic coverage gap identification
+```
+
+#### **Strategic Data Processing**
+- **Trend Detection**: Time-series analysis for publishing patterns and content evolution
+- **Gap Analysis**: Cross-competitor topic mapping to identify strategic opportunities  
+- **Performance Benchmarking**: Industry-standard metrics for competitive positioning
+- **Content Classification**: Automated depth analysis and format categorization
+
+### **Agent-Ready Output Structure**
+
+All strategic exports include machine-readable intelligence:
+
+```json
+{
+  "competitive_metrics": {
+    "market_share_percentages": {...},
+    "publishing_velocity": {...},
+    "content_focus_distribution": {...}
+  },
+  "strategic_opportunities": {
+    "content_gaps": [...],
+    "underserved_stages": [...], 
+    "format_opportunities": [...]
+  },
+  "trend_analysis": {
+    "recent_activity": {...},
+    "velocity_benchmarks": {...},
+    "topic_evolution": {...}
+  }
+}
+```
+
+### **Content Strategy Workflow Integration**
+
+#### **Weekly Intelligence Briefings**
+```bash
+python main.py export --format strategy-brief
+```
+Generates executive summaries with competitive landscape analysis and strategic recommendations.
+
+#### **Strategic Planning Sessions**
+```bash
+python main.py export --format content-gaps
+```
+Provides data-driven opportunity identification for content calendar planning and competitive differentiation.
+
+#### **Campaign-Specific Analysis**
+```bash
+python main.py export --format strategy-brief --competitor "terminalfour"
+```
+Delivers focused competitive intelligence for targeted strategic initiatives.
+
+### **LLM-Orchestrator Ready Features**
+
+- **Structured Intelligence**: All exports formatted for agent consumption with quantified insights
+- **Actionable Recommendations**: Specific strategic guidance based on competitive analysis
+- **Machine-Readable Metrics**: Standardized data formats for automated strategy optimization
+- **Contextual Annotations**: Strategic indicators and trend markers for intelligent processing
 
 
 

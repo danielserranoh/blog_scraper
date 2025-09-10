@@ -68,6 +68,8 @@ The script uses the `click` library for a streamlined command-line interface. Al
     ```bash
     python main.py export --format md --competitor "squiz"
     python main.py export --format csv    # All competitors
+    python main.py export --format strategy-brief    # Strategic intelligence report
+    python main.py export --format content-gaps      # Content gap analysis
     ```
 
 ### Command Options
@@ -189,12 +191,66 @@ Adding a new competitor requires only configuration changes:
 
 ## Data Export Options
 
-The system supports multiple export formats:
-* **Markdown**: Rich formatting with proper heading hierarchy
-* **CSV**: Structured data for analysis
-* **JSON**: Machine-readable format  
+The system supports multiple export formats designed for both human analysis and agent consumption:
+
+### **Standard Formats**
+* **Markdown (md)**: Enhanced competitive intelligence with strategic indicators
+* **CSV**: Structured data for analysis and spreadsheet import
+* **JSON**: Machine-readable format for programmatic consumption
 * **Google Sheets**: Direct integration with Google Workspace
-* **Plain Text**: Simple text format
+* **Plain Text**: Simple text format for basic consumption
+
+### **Strategic Intelligence Formats** ✨ *NEW*
+* **Strategy Brief (strategy-brief)**: Executive-level competitive intelligence report
+  - Market share analysis and publishing velocity benchmarks
+  - Competitor profiling with content focus identification
+  - Strategic opportunities and actionable recommendations
+  
+* **Content Gap Analysis (content-gaps)**: Data-driven opportunity identification
+  - Topic coverage gaps across competitors
+  - Funnel stage distribution analysis by competitor
+  - Content format opportunities (long-form vs. short-form)
+  - Underserved content areas with specific recommendations
+
+### **Enhanced Markdown Features**
+The standard markdown export now includes:
+- **Competitive Intelligence Overview**: Market metrics and trend analysis
+- **Content Organization**: Posts grouped by competitor with strategic context
+- **Activity Indicators**: Recent publishing trends and velocity analysis
+- **Content Depth Analysis**: Length categorization and structure insights
+- **Strategic Metadata**: Funnel stage indicators and technical implementation details
+
+## Content Strategy Workflow Integration
+
+The enhanced export system is specifically designed to support agent-driven content strategy workflows:
+
+### **For Content Strategy Agents**
+- **Structured Intelligence**: All exports include machine-readable strategic insights
+- **Gap Identification**: Automated detection of content opportunities and competitive weaknesses
+- **Trend Analysis**: Publishing velocity and topic evolution tracking
+- **Strategic Context**: Each content piece includes competitive positioning data
+
+### **Workflow Examples**
+```bash
+# Generate weekly competitive intelligence briefing
+python main.py export --format strategy-brief
+
+# Identify content opportunities for strategic planning
+python main.py export --format content-gaps
+
+# Create competitor-specific analysis for campaign planning
+python main.py export --format strategy-brief --competitor "terminalfour"
+
+# Export enhanced markdown for agent consumption and refinement
+python main.py export --format md
+```
+
+### **Agent-Ready Data Structure**
+All strategic exports include:
+- **Quantified Insights**: Market share percentages, activity metrics, coverage ratios
+- **Actionable Recommendations**: Specific strategic suggestions based on data analysis  
+- **Competitive Context**: Relative positioning and opportunity identification
+- **Trend Indicators**: Recent activity patterns and velocity benchmarks
 
 # Future Architecture Notes
 

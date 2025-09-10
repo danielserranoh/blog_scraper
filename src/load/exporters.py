@@ -43,6 +43,44 @@ def _format_as_txt(posts):
             
         # --- NEW: Add funnel stage to text output ---
         output.append(f"Funnel Stage: {post.get('funnel_stage', 'N/A')}")
+        output.append(f"Target Audience: {post.get('target_audience', 'N/A')}")
+        
+        # --- NEW: Add strategic analysis to text output ---
+        strategic_analysis = post.get('strategic_analysis', {})
+        if strategic_analysis:
+            output.append("Strategic Analysis:")
+            output.append(f"  Content Angle: {strategic_analysis.get('content_angle', 'N/A')}")
+            output.append(f"  Content Depth: {strategic_analysis.get('content_depth', 'N/A')}")
+            output.append(f"  Freshness Score: {strategic_analysis.get('content_freshness_score', 'N/A')}")
+            output.append(f"  Persona Focus: {strategic_analysis.get('target_persona_indicators', 'N/A')}")
+            competitive_diff = strategic_analysis.get('competitive_differentiation', 'N/A')
+            if competitive_diff != 'N/A':
+                output.append(f"  Competitive Differentiation: {competitive_diff}")
+        
+        # --- NEW: Add content metrics to text output ---
+        content_processing = post.get('metadata', {}).get('content_processing', {})
+        if content_processing:
+            output.append("Content Metrics:")
+            if 'word_count' in content_processing:
+                output.append(f"  Word Count: {content_processing['word_count']}")
+            if 'reading_time_minutes' in content_processing:
+                output.append(f"  Reading Time: {content_processing['reading_time_minutes']} minutes")
+            if 'avg_sentence_length' in content_processing:
+                output.append(f"  Avg Sentence Length: {content_processing['avg_sentence_length']} words")
+            if 'heading_count' in content_processing:
+                output.append(f"  Structure: {content_processing['heading_count']} headings, {content_processing.get('paragraph_count', 0)} paragraphs")
+            if 'list_items_count' in content_processing and content_processing['list_items_count'] > 0:
+                output.append(f"  Lists: {content_processing['list_items_count']} items ({content_processing.get('bullet_points', 0)} bullets, {content_processing.get('numbered_items', 0)} numbered)")
+            if 'image_count' in content_processing or 'code_block_count' in content_processing:
+                media_info = []
+                if content_processing.get('image_count', 0) > 0:
+                    media_info.append(f"{content_processing['image_count']} images")
+                if content_processing.get('code_block_count', 0) > 0:
+                    media_info.append(f"{content_processing['code_block_count']} code blocks")
+                if content_processing.get('link_count', 0) > 0:
+                    media_info.append(f"{content_processing['link_count']} links")
+                if media_info:
+                    output.append(f"  Media: {', '.join(media_info)}")
         
         # --- NEW: Add schemas to text output ---
         schemas_list = post.get('schemas', [])
@@ -84,6 +122,160 @@ def _format_as_md(posts):
         percentage = (count / len(posts)) * 100
         stage_emoji = {'ToFu': '🔍', 'MoFu': '🎯', 'BoFu': '💼'}.get(stage, '📝')
         output.append(f"- {stage_emoji} **{stage}**: {count} posts ({percentage:.1f}%)")
+    
+    # Content length distribution analysis
+    output.append("\n### 📏 Content Length Distribution")
+    
+    # Collect word counts and categorize
+    word_counts = []
+    length_categories = {'Micro (≤300)': 0, 'Short (301-800)': 0, 'Medium (801-1500)': 0, 'Long (1501-3000)': 0, 'Deep Dive (3000+)': 0}
+    length_by_competitor = defaultdict(lambda: {'Micro (≤300)': 0, 'Short (301-800)': 0, 'Medium (801-1500)': 0, 'Long (1501-3000)': 0, 'Deep Dive (3000+)': 0})
+    length_by_funnel = defaultdict(lambda: defaultdict(int))
+    
+    for post in posts:
+        processing_info = post.get('metadata', {}).get('content_processing', {})
+        word_count = processing_info.get('word_count', 0)
+        
+        if word_count > 0:
+            word_counts.append(word_count)
+            competitor = post.get('competitor', 'Unknown')
+            funnel_stage = post.get('funnel_stage', 'N/A')
+            
+            # Categorize by length
+            if word_count <= 300:
+                category = 'Micro (≤300)'
+            elif word_count <= 800:
+                category = 'Short (301-800)'
+            elif word_count <= 1500:
+                category = 'Medium (801-1500)'
+            elif word_count <= 3000:
+                category = 'Long (1501-3000)'
+            else:
+                category = 'Deep Dive (3000+)'
+            
+            length_categories[category] += 1
+            length_by_competitor[competitor][category] += 1
+            length_by_funnel[funnel_stage][category] += 1
+    
+    if word_counts:
+        avg_length = sum(word_counts) / len(word_counts)
+        median_length = sorted(word_counts)[len(word_counts)//2]
+        output.append(f"**Market Average**: {avg_length:,.0f} words | **Median**: {median_length:,} words")
+        
+        # Overall distribution
+        total_with_metrics = len(word_counts)
+        output.append("\n**Overall Market Distribution:**")
+        for category, count in length_categories.items():
+            percentage = (count / total_with_metrics) * 100
+            bar = "█" * int(percentage / 5) + "▌" if (percentage % 5) >= 2.5 else "█" * int(percentage / 5)
+            output.append(f"- {category}: {count} posts ({percentage:.1f}%) {bar}")
+    
+    # Content length strategy by competitor
+    if length_by_competitor:
+        output.append("\n**Length Strategy by Competitor:**")
+        for competitor in sorted(length_by_competitor.keys()):
+            competitor_total = sum(length_by_competitor[competitor].values())
+            if competitor_total > 0:
+                # Find dominant strategy
+                dominant_category = max(length_by_competitor[competitor].items(), key=lambda x: x[1])
+                dominant_pct = (dominant_category[1] / competitor_total) * 100
+                
+                # Create mini distribution
+                mini_dist = []
+                for category, count in length_categories.items():
+                    comp_count = length_by_competitor[competitor][category]
+                    if comp_count > 0:
+                        pct = (comp_count / competitor_total) * 100
+                        mini_dist.append(f"{category.split()[0]}: {comp_count} ({pct:.0f}%)")
+                
+                output.append(f"  - **{competitor}**: {dominant_category[0]} focused ({dominant_pct:.0f}%)")
+                output.append(f"    - Distribution: {' | '.join(mini_dist[:3])}")
+    
+    # Length preference by funnel stage
+    if length_by_funnel:
+        output.append("\n**Content Length by Funnel Stage:**")
+        for stage in ['ToFu', 'MoFu', 'BoFu']:
+            if stage in length_by_funnel:
+                stage_total = sum(length_by_funnel[stage].values())
+                if stage_total > 0:
+                    dominant_length = max(length_by_funnel[stage].items(), key=lambda x: x[1])
+                    avg_for_stage = []
+                    
+                    # Calculate average length for this stage
+                    stage_posts = [p for p in posts if p.get('funnel_stage') == stage]
+                    stage_word_counts = []
+                    for post in stage_posts:
+                        wc = post.get('metadata', {}).get('content_processing', {}).get('word_count', 0)
+                        if wc > 0:
+                            stage_word_counts.append(wc)
+                    
+                    if stage_word_counts:
+                        stage_avg = sum(stage_word_counts) / len(stage_word_counts)
+                        output.append(f"  - **{stage}**: Avg {stage_avg:,.0f} words, prefers {dominant_length[0]} ({dominant_length[1]} posts)")
+    
+    # Content complexity and structural analysis
+    output.append("\n### 🎯 Content Complexity & Structure Overview")
+    
+    # Collect complexity metrics
+    complexity_by_competitor = defaultdict(list)
+    reading_times = []
+    structure_metrics = {'Low Structure': 0, 'Moderate Structure': 0, 'High Structure': 0}
+    
+    for post in posts:
+        processing_info = post.get('metadata', {}).get('content_processing', {})
+        competitor = post.get('competitor', 'Unknown')
+        
+        # Sentence complexity
+        avg_sentence_length = processing_info.get('avg_sentence_length', 0)
+        if avg_sentence_length > 0:
+            complexity_by_competitor[competitor].append(avg_sentence_length)
+        
+        # Reading time
+        reading_time = processing_info.get('reading_time_minutes', 0)
+        if reading_time > 0:
+            reading_times.append(reading_time)
+        
+        # Structure analysis (headings + lists as structure indicators)
+        heading_count = processing_info.get('heading_count', 0)
+        list_items = processing_info.get('list_items_count', 0)
+        structure_score = heading_count + (list_items / 5)  # Weighted structure score
+        
+        if structure_score <= 2:
+            structure_metrics['Low Structure'] += 1
+        elif structure_score <= 6:
+            structure_metrics['Moderate Structure'] += 1
+        else:
+            structure_metrics['High Structure'] += 1
+    
+    if reading_times:
+        avg_reading_time = sum(reading_times) / len(reading_times)
+        quick_reads = len([rt for rt in reading_times if rt <= 3])
+        medium_reads = len([rt for rt in reading_times if 3 < rt <= 8])
+        long_reads = len([rt for rt in reading_times if rt > 8])
+        
+        output.append(f"**Reading Time Distribution**:")
+        total_timed = len(reading_times)
+        output.append(f"- Quick reads (≤3 min): {quick_reads} posts ({(quick_reads/total_timed)*100:.1f}%)")
+        output.append(f"- Medium reads (4-8 min): {medium_reads} posts ({(medium_reads/total_timed)*100:.1f}%)")  
+        output.append(f"- Long reads (8+ min): {long_reads} posts ({(long_reads/total_timed)*100:.1f}%)")
+        output.append(f"- **Market Average**: {avg_reading_time:.1f} minutes per post")
+    
+    # Content structure distribution
+    total_structured = sum(structure_metrics.values())
+    if total_structured > 0:
+        output.append(f"\n**Content Structure Analysis**:")
+        for structure_type, count in structure_metrics.items():
+            percentage = (count / total_structured) * 100
+            output.append(f"- {structure_type}: {count} posts ({percentage:.1f}%)")
+    
+    # Complexity by competitor
+    if complexity_by_competitor:
+        output.append(f"\n**Readability by Competitor** (avg words per sentence):")
+        for competitor in sorted(complexity_by_competitor.keys()):
+            if complexity_by_competitor[competitor]:
+                avg_complexity = sum(complexity_by_competitor[competitor]) / len(complexity_by_competitor[competitor])
+                complexity_level = "Complex" if avg_complexity > 18 else "Moderate" if avg_complexity > 12 else "Simple"
+                output.append(f"  - **{competitor}**: {avg_complexity:.1f} words/sentence ({complexity_level})")
     
     # Recent content trends (last 30 days)
     recent_cutoff = datetime.now() - timedelta(days=30)
@@ -322,13 +514,39 @@ def _format_as_strategy_brief(posts):
         output.append(f"- **Total Content**: {count} posts ({percentage:.1f}% of market)")
         output.append(f"- **Recent Activity**: {activity_trend} ({recent_count} posts/month)")
         
-        # Funnel stage focus
+        # Enhanced competitor analysis with new metrics
         competitor_posts = [p for p in posts if p.get('competitor') == competitor]
+        
+        # Funnel stage focus
         comp_funnel = Counter(p.get('funnel_stage', 'N/A') for p in competitor_posts)
         top_stage = comp_funnel.most_common(1)[0] if comp_funnel else ('N/A', 0)
         output.append(f"- **Content Focus**: {top_stage[0]} ({(top_stage[1]/count*100):.0f}% of their content)")
         
-        # Content themes (from headings)
+        # Content strategy analysis
+        comp_angles = [p.get('strategic_analysis', {}).get('content_angle', '') for p in competitor_posts]
+        comp_angles = [a for a in comp_angles if a and a != 'N/A']
+        if comp_angles:
+            angle_dist = Counter(comp_angles)
+            top_angle = angle_dist.most_common(1)[0]
+            output.append(f"- **Primary Content Type**: {top_angle[0]} ({(top_angle[1]/len(comp_angles)*100):.0f}% of analyzed content)")
+        
+        # Content quality metrics
+        comp_word_counts = [p.get('metadata', {}).get('content_processing', {}).get('word_count', 0) for p in competitor_posts]
+        comp_word_counts = [w for w in comp_word_counts if w > 0]
+        if comp_word_counts:
+            avg_words = sum(comp_word_counts) / len(comp_word_counts)
+            output.append(f"- **Average Content Length**: {avg_words:,.0f} words")
+        
+        comp_freshness = [p.get('strategic_analysis', {}).get('content_freshness_score', '') for p in competitor_posts]
+        try:
+            comp_freshness_nums = [int(f) for f in comp_freshness if f and f != 'N/A']
+            if comp_freshness_nums:
+                avg_freshness = sum(comp_freshness_nums) / len(comp_freshness_nums)
+                output.append(f"- **Content Freshness**: {avg_freshness:.1f}/10 (industry relevance)")
+        except (ValueError, TypeError):
+            pass
+        
+        # Content themes (from headings - kept for backward compatibility)
         all_headings = []
         for post in competitor_posts:
             headings = post.get('headings', [])
@@ -361,15 +579,72 @@ def _format_as_strategy_brief(posts):
         output.append(f"**Industry Average**: {avg_posts_per_competitor:.1f} posts per competitor per month")
         output.append("**Recommendation**: Match or exceed top performers in publishing frequency.\n")
     
-    # Content length analysis
-    content_lengths = [len(post.get('content', '')) for post in posts if post.get('content')]
-    if content_lengths:
-        avg_length = sum(content_lengths) / len(content_lengths)
-        output.append(f"### Content Depth Analysis")
-        output.append(f"**Average Content Length**: {avg_length:,.0f} characters")
-        long_form_count = len([l for l in content_lengths if l > 3000])
-        output.append(f"**Long-form Content**: {long_form_count} posts ({(long_form_count/len(posts)*100):.1f}%)")
-        output.append("**Recommendation**: Balance long-form thought leadership with accessible shorter content.\n")
+    # Enhanced content analysis using new metrics
+    output.append(f"### 📊 Content Quality & Structure Analysis")
+    
+    # Word count and reading time analysis
+    word_counts = []
+    reading_times = []
+    avg_sentence_lengths = []
+    content_angles = []
+    content_depths = []
+    freshness_scores = []
+    
+    for post in posts:
+        processing_info = post.get('metadata', {}).get('content_processing', {})
+        strategic_info = post.get('strategic_analysis', {})
+        
+        if 'word_count' in processing_info:
+            word_counts.append(processing_info['word_count'])
+        if 'reading_time_minutes' in processing_info:
+            reading_times.append(processing_info['reading_time_minutes'])
+        if 'avg_sentence_length' in processing_info:
+            avg_sentence_lengths.append(processing_info['avg_sentence_length'])
+        if 'content_angle' in strategic_info:
+            content_angles.append(strategic_info['content_angle'])
+        if 'content_depth' in strategic_info:
+            content_depths.append(strategic_info['content_depth'])
+        if 'content_freshness_score' in strategic_info:
+            try:
+                freshness_scores.append(int(strategic_info['content_freshness_score']))
+            except (ValueError, TypeError):
+                pass
+    
+    if word_counts:
+        avg_words = sum(word_counts) / len(word_counts)
+        avg_reading_time = sum(reading_times) / len(reading_times) if reading_times else 0
+        output.append(f"**Average Word Count**: {avg_words:,.0f} words")
+        output.append(f"**Average Reading Time**: {avg_reading_time:.1f} minutes")
+        
+        # Content length distribution
+        short_content = len([w for w in word_counts if w < 500])
+        medium_content = len([w for w in word_counts if 500 <= w <= 1500])
+        long_content = len([w for w in word_counts if w > 1500])
+        
+        output.append(f"**Content Length Distribution**:")
+        output.append(f"  - Short (<500 words): {short_content} posts ({(short_content/len(word_counts)*100):.1f}%)")
+        output.append(f"  - Medium (500-1500 words): {medium_content} posts ({(medium_content/len(word_counts)*100):.1f}%)")
+        output.append(f"  - Long (>1500 words): {long_content} posts ({(long_content/len(word_counts)*100):.1f}%)")
+    
+    if avg_sentence_lengths:
+        avg_sentence = sum(avg_sentence_lengths) / len(avg_sentence_lengths)
+        readability = "Complex" if avg_sentence > 20 else "Moderate" if avg_sentence > 15 else "Simple"
+        output.append(f"**Content Complexity**: {avg_sentence:.1f} words/sentence ({readability})")
+    
+    # Strategic content analysis
+    if content_angles:
+        angle_distribution = Counter(content_angles)
+        output.append(f"**Content Types**: {', '.join([f'{angle} ({count})' for angle, count in angle_distribution.most_common(3)])}")
+    
+    if content_depths:
+        depth_distribution = Counter(content_depths)
+        output.append(f"**Content Depth**: {', '.join([f'{depth} ({count})' for depth, count in depth_distribution.most_common()])}")
+    
+    if freshness_scores:
+        avg_freshness = sum(freshness_scores) / len(freshness_scores)
+        output.append(f"**Average Content Freshness**: {avg_freshness:.1f}/10")
+        
+    output.append("**Recommendation**: Analyze top-performing content lengths and complexity levels for your target audience.\n")
     
     output.append("---\n")
     output.append("*This intelligence brief was auto-generated from competitor content analysis.*")
@@ -430,11 +705,74 @@ def _format_as_content_gaps(posts):
         output.append(f"**Covered by**: {', '.join(gap['competitors_covering'])}")
         output.append(f"**Gap opportunity for**: {', '.join(gap['competitors_missing'])}\n")
     
+    # Enhanced strategic content gaps analysis
+    output.append("## 🎯 Strategic Content Gaps Analysis")
+    
+    # Content angle gaps
+    content_angles_by_competitor = defaultdict(lambda: defaultdict(int))
+    content_depths_by_competitor = defaultdict(lambda: defaultdict(int))
+    funnel_coverage = defaultdict(lambda: defaultdict(int))
+    
+    for post in posts:
+        competitor = post.get('competitor', 'Unknown')
+        strategic_info = post.get('strategic_analysis', {})
+        
+        # Analyze content angles
+        content_angle = strategic_info.get('content_angle', '')
+        if content_angle and content_angle != 'N/A':
+            content_angles_by_competitor[competitor][content_angle] += 1
+        
+        # Analyze content depths
+        content_depth = strategic_info.get('content_depth', '')
+        if content_depth and content_depth != 'N/A':
+            content_depths_by_competitor[competitor][content_depth] += 1
+        
+        # Funnel stage coverage
+        funnel_stage = post.get('funnel_stage', '')
+        if funnel_stage and funnel_stage != 'N/A':
+            funnel_coverage[competitor][funnel_stage] += 1
+    
+    # Content angle gap analysis
+    if content_angles_by_competitor:
+        output.append("### Content Type Gaps")
+        all_angles = set()
+        for competitor_angles in content_angles_by_competitor.values():
+            all_angles.update(competitor_angles.keys())
+        
+        competitor_list = list(content_angles_by_competitor.keys())
+        for angle in sorted(all_angles):
+            competitors_with_angle = [comp for comp in competitor_list if angle in content_angles_by_competitor[comp]]
+            coverage_ratio = len(competitors_with_angle) / len(competitor_list)
+            
+            if 0.2 <= coverage_ratio <= 0.8:  # Gap opportunity
+                missing_competitors = [comp for comp in competitor_list if comp not in competitors_with_angle]
+                output.append(f"**{angle}**: {len(competitors_with_angle)}/{len(competitor_list)} competitors ({coverage_ratio*100:.0f}%)")
+                output.append(f"  - Gap opportunity for: {', '.join(missing_competitors)}")
+        output.append("")
+    
+    # Content depth gap analysis  
+    if content_depths_by_competitor:
+        output.append("### Content Depth Gaps")
+        all_depths = set()
+        for competitor_depths in content_depths_by_competitor.values():
+            all_depths.update(competitor_depths.keys())
+        
+        for depth in ['Surface', 'Intermediate', 'Deep']:  # Ordered by complexity
+            if depth in all_depths:
+                competitors_with_depth = [comp for comp in competitor_list if depth in content_depths_by_competitor[comp]]
+                coverage_ratio = len(competitors_with_depth) / len(competitor_list)
+                
+                if coverage_ratio < 0.8:  # Under-served depth level
+                    missing_competitors = [comp for comp in competitor_list if comp not in competitors_with_depth]
+                    output.append(f"**{depth} Content**: {len(competitors_with_depth)}/{len(competitor_list)} competitors ({coverage_ratio*100:.0f}%)")
+                    if missing_competitors:
+                        output.append(f"  - Opportunity for: {', '.join(missing_competitors)}")
+        output.append("")
+    
     # Funnel stage gaps by competitor
-    output.append("## 🎯 Funnel Stage Gaps by Competitor")
+    output.append("### Funnel Stage Coverage Analysis")
     
     funnel_stages = ['ToFu', 'MoFu', 'BoFu']
-    stage_coverage = defaultdict(lambda: defaultdict(int))
     
     for post in posts:
         competitor = post.get('competitor', 'Unknown')
@@ -454,41 +792,84 @@ def _format_as_content_gaps(posts):
             output.append(f"  - **{stage}**: {count} posts ({percentage:.0f}%) {status}")
         output.append("")
     
-    # Content format gaps
-    output.append("## 📊 Content Format Analysis")
+    # Enhanced content quality benchmarking
+    output.append("## 📊 Content Quality Benchmarking")
     
-    format_analysis = defaultdict(lambda: defaultdict(int))
+    # Word count benchmarking
+    competitor_metrics = defaultdict(lambda: {'word_counts': [], 'freshness_scores': [], 'complexity_scores': []})
     
     for post in posts:
         competitor = post.get('competitor', 'Unknown')
-        content_length = len(post.get('content', ''))
+        processing_info = post.get('metadata', {}).get('content_processing', {})
+        strategic_info = post.get('strategic_analysis', {})
         
-        # Categorize by content length as a proxy for format
-        if content_length > 3000:
-            format_type = "Long-form Guide"
-        elif content_length > 1500:
-            format_type = "Medium Article"
-        elif content_length > 500:
-            format_type = "Short Post"
-        else:
-            format_type = "Brief Update"
+        # Collect word counts
+        if 'word_count' in processing_info:
+            competitor_metrics[competitor]['word_counts'].append(processing_info['word_count'])
         
-        format_analysis[competitor][format_type] += 1
+        # Collect freshness scores
+        if 'content_freshness_score' in strategic_info:
+            try:
+                score = int(strategic_info['content_freshness_score'])
+                competitor_metrics[competitor]['freshness_scores'].append(score)
+            except (ValueError, TypeError):
+                pass
+        
+        # Collect complexity scores (sentence length)
+        if 'avg_sentence_length' in processing_info:
+            competitor_metrics[competitor]['complexity_scores'].append(processing_info['avg_sentence_length'])
     
-    all_formats = set()
-    for competitor_formats in format_analysis.values():
-        all_formats.update(competitor_formats.keys())
+    output.append("### Content Length Benchmarking")
+    output.append("| Competitor | Avg Words | Content Range | Length Strategy |")
+    output.append("|------------|-----------|---------------|-----------------|")
     
-    for format_type in sorted(all_formats):
-        output.append(f"### {format_type}")
-        for competitor in sorted(format_analysis.keys()):
-            count = format_analysis[competitor].get(format_type, 0)
-            total = sum(format_analysis[competitor].values())
-            percentage = (count / total * 100) if total > 0 else 0
+    for competitor in sorted(competitor_metrics.keys()):
+        word_counts = competitor_metrics[competitor]['word_counts']
+        if word_counts:
+            avg_words = sum(word_counts) / len(word_counts)
+            min_words = min(word_counts)
+            max_words = max(word_counts)
             
-            status = "📈 Strong" if percentage > 30 else "📉 Weak" if percentage < 10 else "➡️ Moderate"
-            output.append(f"  - **{competitor}**: {count} posts ({percentage:.0f}%) {status}")
-        output.append("")
+            # Determine strategy
+            if avg_words > 1500:
+                strategy = "Long-form focused"
+            elif avg_words > 800:
+                strategy = "Balanced approach"
+            else:
+                strategy = "Concise content"
+            
+            output.append(f"| {competitor} | {avg_words:,.0f} | {min_words:,}-{max_words:,} | {strategy} |")
+    
+    output.append("")
+    
+    # Content freshness benchmarking
+    output.append("### Content Freshness Benchmarking")
+    for competitor in sorted(competitor_metrics.keys()):
+        freshness_scores = competitor_metrics[competitor]['freshness_scores']
+        if freshness_scores:
+            avg_freshness = sum(freshness_scores) / len(freshness_scores)
+            freshness_level = "High" if avg_freshness >= 7 else "Moderate" if avg_freshness >= 5 else "Low"
+            output.append(f"**{competitor}**: {avg_freshness:.1f}/10 ({freshness_level} industry relevance)")
+    
+    output.append("")
+    
+    # Content complexity benchmarking
+    complexity_data = []
+    for competitor in sorted(competitor_metrics.keys()):
+        complexity_scores = competitor_metrics[competitor]['complexity_scores']
+        if complexity_scores:
+            avg_complexity = sum(complexity_scores) / len(complexity_scores)
+            complexity_level = "Complex" if avg_complexity > 18 else "Moderate" if avg_complexity > 12 else "Simple"
+            complexity_data.append((competitor, avg_complexity, complexity_level))
+    
+    if complexity_data:
+        output.append("### Content Complexity Analysis")
+        for competitor, score, level in complexity_data:
+            output.append(f"**{competitor}**: {score:.1f} words/sentence ({level} readability)")
+    
+    output.append("")
+    output.append("---")
+    output.append("*This content gap analysis leverages strategic content intelligence and structural analysis to identify specific opportunities for competitive differentiation.*")
     
     return "\n".join(output)
 

@@ -13,6 +13,13 @@
   "google_sheets": {
     "spreadsheet_name": "Blog Scraper Export"
   },
+  "content_processing": {
+    "max_content_length": 50000,
+    "chunk_size": 30000,
+    "chunk_overlap": 500,
+    "api_content_limit": 50000,
+    "_comment": "Content processing limits optimized for 1M+ token input capacity. Most posts under 50K chars won't need chunking for better strategic analysis quality."
+  },
   "dxp_competitors": [
     "WordPress",
     "Drupal",
@@ -27,6 +34,6 @@
     "Liferay"
   ],
   "prompts": {
-    "enrichment_instruction": "You are a world-class inbound marketing analyst AI. Given the following blog post content, provide a summary (no more than 600 words), an ordered list of the 5 most important SEO keywords ranked by importance, and a classification of its inbound marketing 'funnel_stage' (ToFu, MoFu, or BoFu). Use the following definitions: ToFu (Awareness) is educational, problem-focused content; MoFu (Consideration) is solution-focused content; BoFu (Decision) is product-focused content. Return a JSON object with 'summary', 'seo_keywords', and 'funnel_stage' keys."
+    "enrichment_instruction": "You are a world-class inbound marketing analyst AI. Given the following blog post content, provide comprehensive analysis for competitive intelligence. Return a JSON object with the following structure:\n\n1. 'summary': Content summary (max 400 words)\n2. 'seo_keywords': Array of 5 most important SEO keywords ranked by importance\n3. 'funnel_stage': Classification as ToFu (Awareness - educational, problem-focused), MoFu (Consideration - solution-focused), or BoFu (Decision - product-focused)\n4. 'target_audience': Primary audience (e.g., Marketing teams, IT professionals, C-suite executives)\n5. 'strategic_analysis': Object containing:\n   - 'content_angle': Classify as 'How-to Guide', 'Case Study', 'Thought Leadership', 'Product Overview', 'Industry Analysis', or 'Best Practices'\n   - 'competitive_differentiation': Identify 2-3 unique angles or insights this content covers that differentiate it from typical competitor content (max 200 words)\n   - 'content_freshness_score': Score from 1-10 indicating timeliness and relevance, with explanation (1=outdated, 10=cutting-edge)\n   - 'target_persona_indicators': Classify focus as 'Technical' (developers, architects), 'Marketing' (marketers, content creators), 'Business' (executives, decision makers), or 'Mixed'\n   - 'content_depth': Rate as 'Surface' (basic overview), 'Intermediate' (some detail), or 'Deep' (comprehensive analysis)\n\nEnsure all responses are concise, actionable, and focused on strategic competitive intelligence."
   }
 }

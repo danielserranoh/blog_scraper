@@ -12,6 +12,7 @@ from src.state_management.state_manager import StateManager
 from src.exceptions import EnrichmentError
 
 from src import utils
+from src.models import PostModel
 
 logger = logging.getLogger(__name__)
 
@@ -122,35 +123,36 @@ class EnrichmentManager:
             missing_count = 0
             
             for post in processed_posts:
-                # Check if post needs enrichment (missing data OR failed status)
-                needs_enrichment = False
-                reason = []
-                
-                if (post.get('summary') in [None, 'N/A', ''] or 
-                    post.get('seo_keywords') in [None, 'N/A', ''] or
-                    post.get('funnel_stage') in [None, 'N/A', '']):
-                    needs_enrichment = True
-                    reason.append("missing data")
-                    missing_count += 1
-                
-                if post.get('enrichment_status') == 'failed':
-                    needs_enrichment = True
-                    reason.append("previous failure")
-                    failed_count += 1
+                # Use data model to check if post needs enrichment
+                needs_enrichment, missing_fields = PostModel.needs_enrichment(post)
                 
                 if needs_enrichment:
                     posts_to_enrich.append(post)
-                    logger.debug(f"Post '{post.get('title', 'unknown')}' needs enrichment: {', '.join(reason)}")
+                    logger.debug(f"Post '{post.get('title', 'unknown')}' needs enrichment - missing: {', '.join(missing_fields)}")
+                    
+                    # Count different types of missing data for reporting
+                    if any('strategic_analysis' in field for field in missing_fields):
+                        missing_count += 1
+                    # Check for failed status in both old and new metadata structure
+                    if (post.get('enrichment_status') == 'failed' or 
+                        post.get('metadata', {}).get('enrichment_status') == 'failed'):
+                        failed_count += 1
             
             # Provide detailed logging about what needs enrichment
             if posts_to_enrich:
                 logger.info(f"Found {len(posts_to_enrich)} posts needing enrichment:")
                 if missing_count > 0:
-                    logger.info(f"  - {missing_count} posts with missing enrichment data")
+                    logger.info(f"  - {missing_count} posts missing strategic analysis or other enrichment data")
                 if failed_count > 0:
                     logger.info(f"  - {failed_count} posts with previous enrichment failures")
+                
+                # Show some example missing fields for the first few posts
+                for i, post in enumerate(posts_to_enrich[:3]):
+                    _, missing_fields = PostModel.needs_enrichment(post)
+                    logger.info(f"  - '{post.get('title', 'unknown')[:50]}...' missing: {', '.join(missing_fields[:3])}")
+                    
             else:
-                logger.info(f"All {len(processed_posts)} posts are fully enriched")
+                logger.info(f"All {len(processed_posts)} posts are fully enriched with strategic analysis")
                     
             return processed_posts, posts_to_enrich
             

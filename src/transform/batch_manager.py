@@ -312,8 +312,15 @@ class BatchJobManager:
             
             final_posts = list(original_posts_map.values())
 
-            # Save the consolidated results
-            self.state_manager.save_processed_data(final_posts, name, os.path.basename(source_raw_filepath) if source_raw_filepath else "batch_results.json")
+            # Save the consolidated results with proper naming
+            if source_raw_filepath:
+                filename = os.path.basename(source_raw_filepath)
+            else:
+                # Generate proper filename: {competitor_name}_{timestamp}.json
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{name}_{timestamp}.json"
+            
+            self.state_manager.save_processed_data(final_posts, name, filename)
             logger.info(f"Successfully consolidated {len(final_posts)} posts for {name}")
             return final_posts
             

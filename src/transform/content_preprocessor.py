@@ -4,6 +4,7 @@
 import logging
 import re
 from typing import List, Dict, Any, Tuple
+from src import utils
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +15,17 @@ class ContentPreprocessor:
     across both live and batch enrichment workflows.
     """
     
-    # Conservative limits that work reliably with API + prompt overhead
-    MAX_CONTENT_LENGTH = 6000
-    CHUNK_SIZE = 5000
-    CHUNK_OVERLAP = 200
-    
     @classmethod
+    def _get_config_values(cls):
+        """Get content processing configuration values from config file."""
+        config = utils.get_content_processing_config()
+        return (
+            config['max_content_length'],
+            config['chunk_size'], 
+            config['chunk_overlap']
+        )
+    
+    @classmethod 
     def prepare_posts_for_enrichment(cls, posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Prepares a list of posts for enrichment by cleaning and processing content.
@@ -31,6 +37,7 @@ class ContentPreprocessor:
             List of processed post dictionaries, potentially with chunked posts
         """
         processed_posts = []
+        max_content_length, chunk_size, chunk_overlap = cls._get_config_values()
         
         for post in posts:
             content = post.get('content', '')
@@ -44,21 +51,36 @@ class ContentPreprocessor:
             cleaned_content = cls._clean_content(content)
             
             # Check if content needs chunking
-            if len(cleaned_content) <= cls.MAX_CONTENT_LENGTH:
+            if len(cleaned_content) <= max_content_length:
                 # Content fits in single request
                 processed_post = post.copy()
                 processed_post['content'] = cleaned_content
-                processed_post['content_processing'] = {
+                
+                # Initialize metadata structure if not present
+                if 'metadata' not in processed_post:
+                    processed_post['metadata'] = {}
+                    
+                # Calculate content metrics
+                word_count = len(cleaned_content.split())
+                reading_time_minutes = round(word_count / 225, 1)  # 225 words per minute average
+                
+                # Content structure analysis
+                structure_metrics = cls._analyze_content_structure(cleaned_content)
+                
+                processed_post['metadata']['content_processing'] = {
                     'original_length': len(content),
                     'processed_length': len(cleaned_content),
+                    'word_count': word_count,
+                    'reading_time_minutes': reading_time_minutes,
                     'chunked': False,
-                    'cleaning_applied': cleaned_content != content
+                    'cleaning_applied': cleaned_content != content,
+                    **structure_metrics
                 }
                 processed_posts.append(processed_post)
             else:
                 # Content needs chunking
                 logger.info(f"Content for '{title}' ({len(cleaned_content)} chars) needs chunking")
-                chunks = cls._create_content_chunks(cleaned_content, title)
+                chunks = cls._create_content_chunks(cleaned_content, title, chunk_size, chunk_overlap)
                 
                 for i, chunk in enumerate(chunks):
                     chunk_post = post.copy()
@@ -67,9 +89,20 @@ class ContentPreprocessor:
                     chunk_post['original_title'] = title
                     chunk_post['chunk_index'] = i
                     chunk_post['total_chunks'] = len(chunks)
-                    chunk_post['content_processing'] = {
+                    
+                    # Initialize metadata structure if not present
+                    if 'metadata' not in chunk_post:
+                        chunk_post['metadata'] = {}
+                    
+                    # Calculate metrics for this chunk
+                    chunk_word_count = len(chunk.split())
+                    chunk_reading_time = round(chunk_word_count / 225, 1)
+                    
+                    chunk_post['metadata']['content_processing'] = {
                         'original_length': len(content),
                         'chunk_length': len(chunk),
+                        'chunk_word_count': chunk_word_count,
+                        'chunk_reading_time_minutes': chunk_reading_time,
                         'chunked': True,
                         'chunk_number': i + 1,
                         'total_chunks': len(chunks),
@@ -133,18 +166,74 @@ class ContentPreprocessor:
         return cleaned.strip()
     
     @classmethod
-    def _create_content_chunks(cls, content: str, title: str) -> List[str]:
+    def _analyze_content_structure(cls, content: str) -> Dict[str, Any]:
+        """
+        Analyzes content structure and complexity metrics.
+        
+        Args:
+            content: Cleaned content string
+            
+        Returns:
+            Dictionary of structure metrics
+        """
+        if not content:
+            return {}
+        
+        # Count headings (markdown style)
+        heading_count = len(re.findall(r'^#+\s+', content, re.MULTILINE))
+        
+        # Count paragraphs (double line breaks)
+        paragraph_count = len([p for p in content.split('\n\n') if p.strip()])
+        
+        # Count lists (markdown bullets and numbers)
+        bullet_list_items = len(re.findall(r'^\s*[-*+]\s+', content, re.MULTILINE))
+        numbered_list_items = len(re.findall(r'^\s*\d+\.\s+', content, re.MULTILINE))
+        total_list_items = bullet_list_items + numbered_list_items
+        
+        # Count sentences for complexity analysis
+        sentences = re.split(r'[.!?]+', content)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        sentence_count = len(sentences)
+        
+        # Calculate average sentence length
+        avg_sentence_length = 0
+        if sentences:
+            total_sentence_words = sum(len(sentence.split()) for sentence in sentences)
+            avg_sentence_length = round(total_sentence_words / len(sentences), 1)
+        
+        # Detect media elements (basic patterns)
+        image_count = len(re.findall(r'!\[.*?\]\(.*?\)|<img\s+|image:', content, re.IGNORECASE))
+        code_block_count = len(re.findall(r'```|<code>|<pre>', content, re.IGNORECASE))
+        link_count = len(re.findall(r'\[.*?\]\(.*?\)|<a\s+href|http[s]?://', content))
+        
+        return {
+            'heading_count': heading_count,
+            'paragraph_count': paragraph_count,
+            'sentence_count': sentence_count,
+            'avg_sentence_length': avg_sentence_length,
+            'list_items_count': total_list_items,
+            'bullet_points': bullet_list_items,
+            'numbered_items': numbered_list_items,
+            'image_count': image_count,
+            'code_block_count': code_block_count,
+            'link_count': link_count
+        }
+    
+    @classmethod
+    def _create_content_chunks(cls, content: str, title: str, chunk_size: int = 30000, chunk_overlap: int = 500) -> List[str]:
         """
         Creates intelligent chunks from long content.
         
         Args:
             content: Content to chunk
             title: Title for logging purposes
+            chunk_size: Size of each chunk
+            chunk_overlap: Overlap between chunks
             
         Returns:
             List of content chunks
         """
-        if len(content) <= cls.MAX_CONTENT_LENGTH:
+        if len(content) <= chunk_size:
             return [content]
         
         chunks = []
@@ -152,12 +241,12 @@ class ContentPreprocessor:
         
         while current_pos < len(content):
             # Determine chunk end position
-            chunk_end = min(current_pos + cls.CHUNK_SIZE, len(content))
+            chunk_end = min(current_pos + chunk_size, len(content))
             
             # Try to find a good break point (sentence ending)
             if chunk_end < len(content):
                 # Look for sentence endings within the last 20% of the chunk
-                search_start = max(current_pos + int(cls.CHUNK_SIZE * 0.8), current_pos + 500)
+                search_start = max(current_pos + int(chunk_size * 0.8), current_pos + 500)
                 search_area = content[search_start:chunk_end + 100]  # Look a bit ahead
                 
                 # Find sentence endings
@@ -182,7 +271,7 @@ class ContentPreprocessor:
             
             # Move to next chunk with overlap
             if chunk_end < len(content):
-                current_pos = chunk_end - cls.CHUNK_OVERLAP
+                current_pos = chunk_end - chunk_overlap
                 # Make sure we don't go backwards
                 if current_pos <= 0:
                     current_pos = chunk_end
@@ -208,7 +297,10 @@ class ContentPreprocessor:
         non_chunked = []
         
         for post in enriched_posts:
-            processing_info = post.get('content_processing', {})
+            # Check both new metadata structure and old structure for backward compatibility
+            processing_info = post.get('metadata', {}).get('content_processing', {})
+            if not processing_info:
+                processing_info = post.get('content_processing', {})  # Fallback to old structure
             
             if processing_info.get('chunked', False):
                 original_title = post.get('original_title', post.get('title'))
@@ -261,8 +353,11 @@ class ContentPreprocessor:
                     stage_counts = Counter(funnel_stages)
                     merged_post['funnel_stage'] = stage_counts.most_common(1)[0][0]
                 
-                # Update processing info
-                merged_post['content_processing'] = {
+                # Update processing info in metadata structure
+                if 'metadata' not in merged_post:
+                    merged_post['metadata'] = {}
+                    
+                merged_post['metadata']['content_processing'] = {
                     'was_chunked': True,
                     'chunk_count': len(chunks),
                     'merged_back': True

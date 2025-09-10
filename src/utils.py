@@ -7,20 +7,38 @@ import time
 
 logger = logging.getLogger(__name__)
 
-# --- Prompt Management ---
+# --- Configuration Management ---
+_CONFIG = {}
 _PROMPTS = {}
+
+def _load_config():
+    """Loads the configuration from the config file into global variables."""
+    global _CONFIG, _PROMPTS
+    try:
+        with open('config/config.json', 'r') as f:
+            _CONFIG = json.load(f)
+            _PROMPTS = _CONFIG.get('prompts', {})
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Could not load configuration from config.json: {e}")
+        _CONFIG = {}
+        _PROMPTS = {}
 
 def _load_prompts():
     """Loads the prompts from the config file into a global variable."""
-    global _PROMPTS
-    if not _PROMPTS:
-        try:
-            with open('config/config.json', 'r') as f:
-                config = json.load(f)
-                _PROMPTS = config.get('prompts', {})
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.error(f"Could not load prompts from config.json: {e}")
-            _PROMPTS = {}
+    if not _CONFIG:
+        _load_config()
+
+def get_content_processing_config():
+    """Returns the content processing configuration parameters."""
+    if not _CONFIG:
+        _load_config()
+    
+    return _CONFIG.get('content_processing', {
+        'max_content_length': 50000,  # Default fallback values
+        'chunk_size': 30000,
+        'chunk_overlap': 500,
+        'api_content_limit': 50000
+    })
 
 def get_prompt(prompt_name, content, headings=None, primary_competitors=None, dxp_competitors=None):
     """

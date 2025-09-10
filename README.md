@@ -1,13 +1,15 @@
 # Python Blog Scraper and Analyzer
 
 ## Project Description
-This Python project is an advanced ETL (Extract, Transform, Load) pipeline designed to scrape blog posts from multiple competitor websites. It gathers key information such as the title, URL, publication date, and content, then enriches this data using the Gemini API to generate concise summaries, SEO keywords, and to classify the content's `funnel_stage`.
+This Python project is an advanced ETL (Extract, Transform, Load) pipeline designed to scrape blog posts from multiple competitor websites. It gathers key information such as the title, URL, publication date, and content, then enriches this data using the Gemini API to generate comprehensive strategic analysis including summaries, SEO keywords, funnel stage classification, and **advanced content intelligence** featuring content angles, competitive differentiation analysis, freshness scoring, and detailed content structure metrics.
 
 The project is built on a **mature manager-based architecture** with **dependency injection**, **intelligent content preprocessing**, and **comprehensive error handling**. It features a robust **dual API strategy** that intelligently switches between high-performance "live" mode and cost-effective "batch" mode for data enrichment.
 
 **Key architectural features include:**
 * **Dependency Injection Container**: Centralized management of all system dependencies
-* **Intelligent Content Preprocessing**: Automatic content cleaning, chunking, and optimization for API consumption
+* **Advanced Content Analysis**: Automatic content metrics calculation including word count, reading time, structure analysis, and complexity scoring
+* **Intelligent Content Preprocessing**: Automatic content cleaning, chunking, and optimization for API consumption with configurable parameters
+* **Strategic Intelligence Generation**: Comprehensive competitive analysis with content angle classification, freshness scoring, and differentiation analysis
 * **Centralized Configuration**: All site-specific logic and application settings are defined in a single location
 * **Single API Gateway**: All interactions with the Gemini API are funneled through a dedicated, robust connector
 * **LLM-Ready Error Handling**: Structured exception system designed for future LLM orchestrator integration
@@ -127,23 +129,39 @@ Centrally manages all system dependencies with lazy initialization:
 ### Content Processing Pipeline
 
 1. **Raw Content Extraction**: Scrapers extract content using pattern-based selectors
-2. **Content Preprocessing**: 
+2. **Advanced Content Preprocessing**: 
    - Unicode character normalization (smart quotes, em dashes, etc.)
-   - Content length optimization with intelligent chunking at sentence boundaries  
+   - Content metrics calculation (word count, reading time, sentence complexity)
+   - Content structure analysis (headings, paragraphs, lists, media detection)
+   - Content length optimization with intelligent chunking at sentence boundaries (configurable limits up to 50,000 characters)
    - Problematic pattern detection and cleaning
-3. **API Enrichment**: Content sent to Gemini API for summary, keywords, and funnel stage classification
-4. **Result Merging**: Chunked content results intelligently merged back into complete posts
-5. **State Persistence**: Final enriched data saved with comprehensive metadata
+3. **Strategic API Enrichment**: Content sent to Gemini API for comprehensive analysis including:
+   - Content summaries and SEO keyword extraction
+   - Funnel stage classification (ToFu/MoFu/BoFu)
+   - Content angle classification (How-to Guide, Case Study, Thought Leadership, etc.)
+   - Competitive differentiation analysis
+   - Content freshness scoring (1-10 scale for industry relevance)
+   - Target persona indicators (Technical/Marketing/Business/Mixed)
+   - Content depth assessment (Surface/Intermediate/Deep)
+4. **Result Merging**: Chunked content results intelligently merged back into complete posts with deduplicated analysis
+5. **Enhanced State Persistence**: Final enriched data saved with comprehensive metadata structure including content processing metrics and strategic analysis
 
-## Intelligent Content Handling
+## Advanced Content Intelligence & Analysis
 
-The system includes sophisticated content preprocessing:
+The system includes sophisticated content analysis and preprocessing capabilities:
 
-### Content Preprocessing Features
+### Content Analysis Features ✨ *NEW*
+* **Comprehensive Content Metrics**: Automatic calculation of word count, reading time, sentence complexity, and structure analysis
+* **Content Structure Detection**: Identifies headings, paragraphs, lists, images, code blocks, and links for richness assessment
+* **Strategic Content Classification**: AI-powered analysis of content angles, depth levels, target personas, and competitive differentiation
+* **Content Quality Scoring**: Freshness scoring (1-10) for industry relevance and timeliness assessment
+* **Readability Analysis**: Sentence complexity scoring for audience accessibility evaluation
+
+### Enhanced Content Preprocessing Features
 * **Smart Character Cleaning**: Normalizes smart quotes, em dashes, and other Unicode characters
-* **Intelligent Chunking**: Automatically splits oversized content (>6,000 chars) at sentence boundaries
+* **Optimized Intelligent Chunking**: Automatically splits oversized content (configurable up to 50,000 characters) at sentence boundaries for optimal AI analysis
 * **Context Preservation**: Adds continuation markers to maintain narrative flow across chunks
-* **Merge-Back Logic**: Reconstructs chunked results into complete posts with deduplicated keywords
+* **Advanced Merge-Back Logic**: Reconstructs chunked results into complete posts with deduplicated keywords and merged strategic analysis
 
 ### API Optimization
 * **Length Validation**: Ensures content fits within API token limits
@@ -213,25 +231,26 @@ The system supports multiple export formats designed for both human analysis and
 * **Google Sheets**: Direct integration with Google Workspace
 * **Plain Text**: Simple text format for basic consumption
 
-### **Strategic Intelligence Formats** ✨ *NEW*
-* **Strategy Brief (strategy-brief)**: Executive-level competitive intelligence report
-  - Market share analysis and publishing velocity benchmarks
-  - Competitor profiling with content focus identification
-  - Strategic opportunities and actionable recommendations
+### **Strategic Intelligence Formats** ✨ *ENHANCED*
+* **Strategy Brief (strategy-brief)**: Executive-level competitive intelligence report featuring:
+  - **Content Quality & Structure Analysis**: Word count benchmarking, reading time distribution, content complexity analysis
+  - **Enhanced Competitor Profiling**: Content types, quality metrics, freshness ratings, and strategic positioning
+  - **Market Intelligence**: Publishing velocity benchmarks, content length strategies, and competitive differentiation insights
+  - **Strategic Opportunities**: Data-driven recommendations based on comprehensive content analysis
   
-* **Content Gap Analysis (content-gaps)**: Data-driven opportunity identification
-  - Topic coverage gaps across competitors
-  - Funnel stage distribution analysis by competitor
-  - Content format opportunities (long-form vs. short-form)
-  - Underserved content areas with specific recommendations
+* **Content Gap Analysis (content-gaps)**: Advanced data-driven opportunity identification including:
+  - **Strategic Content Gaps**: Missing content angles, depth levels, and complexity analysis by competitor
+  - **Content Quality Benchmarking**: Comprehensive comparison tables with word count ranges, freshness scores, and readability metrics
+  - **Topic Coverage Analysis**: Underserved content areas with specific strategic recommendations
+  - **Competitive Positioning**: Content strategy insights based on structure, complexity, and quality metrics
 
-### **Enhanced Markdown Features**
-The standard markdown export now includes:
-- **Competitive Intelligence Overview**: Market metrics and trend analysis
-- **Content Organization**: Posts grouped by competitor with strategic context
-- **Activity Indicators**: Recent publishing trends and velocity analysis
-- **Content Depth Analysis**: Length categorization and structure insights
-- **Strategic Metadata**: Funnel stage indicators and technical implementation details
+### **Enhanced Competitive Intelligence Report** ✨ *NEW*
+The markdown export now includes comprehensive content analysis:
+- **Content Length Distribution**: Detailed breakdown of content categories (Micro/Short/Medium/Long/Deep Dive) with visual distribution charts
+- **Length Strategy by Competitor**: Individual competitor content strategies and distribution patterns
+- **Content Complexity & Structure Overview**: Reading time analysis, structure scoring, and readability benchmarking
+- **Funnel Stage Content Preferences**: Optimal content lengths and complexity for each funnel stage
+- **Strategic Market Intelligence**: Actionable insights for content strategy optimization
 
 ## Content Strategy Workflow Integration
 
@@ -259,11 +278,13 @@ python main.py export --format md
 ```
 
 ### **Agent-Ready Data Structure**
-All strategic exports include:
-- **Quantified Insights**: Market share percentages, activity metrics, coverage ratios
-- **Actionable Recommendations**: Specific strategic suggestions based on data analysis  
-- **Competitive Context**: Relative positioning and opportunity identification
-- **Trend Indicators**: Recent activity patterns and velocity benchmarks
+All strategic exports include enhanced intelligence:
+- **Quantified Content Insights**: Word count benchmarks, reading time analysis, complexity scores, content structure metrics
+- **Strategic Content Analysis**: Content angles, freshness scores, competitive differentiation insights, depth assessments
+- **Quality Benchmarking**: Comparative analysis of content strategies, readability levels, and structural approaches
+- **Actionable Recommendations**: Data-driven strategic suggestions based on comprehensive content intelligence
+- **Competitive Context**: Relative positioning with detailed content quality and strategy comparisons
+- **Market Intelligence**: Content length distributions, complexity patterns, and strategic opportunity identification
 
 # Future Architecture Notes
 

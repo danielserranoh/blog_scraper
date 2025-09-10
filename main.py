@@ -187,6 +187,7 @@ def check_job(competitor):
 def export(export_format, competitor):
     """Export the latest data to a file."""
     args = {
+        'export': True,
         'export_format': export_format,
         'competitor': competitor,
         'check_job': False,

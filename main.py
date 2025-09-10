@@ -206,5 +206,42 @@ def export(export_format, competitor):
     
     asyncio.run(run())
 
+@cli.command()
+@click.option('--gaps', is_flag=True, help='Analyze content gaps and opportunities across competitors.')
+@click.option('--strategy', is_flag=True, help='Generate strategic intelligence brief.')
+@click.option('--competitor', '-c', type=str, help='Focus analysis on a specific competitor.')
+def analyze(gaps, strategy, competitor):
+    """Analyze competitive content for strategic insights."""
+    if not gaps and not strategy:
+        click.echo("Error: Must specify either --gaps or --strategy analysis type.")
+        return
+    
+    if gaps and strategy:
+        click.echo("Error: Please specify only one analysis type at a time.")
+        return
+    
+    analysis_type = 'content_gaps' if gaps else 'strategy_brief'
+    
+    args = {
+        'analyze': True,
+        'analysis_type': analysis_type,
+        'competitor': competitor,
+        'check_job': False,
+        'wait': False,
+        'days': None,
+        'all': False,
+        'scrape': False,
+        'enrich': False,
+        'enrich_raw': False,
+        'export': None,
+        'get_posts': False
+    }
+    
+    async def run():
+        result = await run_pipeline(args)
+        await handle_pipeline_result(result)
+    
+    asyncio.run(run())
+
 if __name__ == "__main__":
     cli()

@@ -12,7 +12,8 @@ from .exceptions import (
     ScrapingError, 
     EnrichmentError, 
     StateError,
-    ConfigurationError
+    ConfigurationError,
+    ExportError
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,9 @@ async def run_pipeline(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif args.get('export'):
             return await _handle_export(container, competitors_to_process, args.get('export_format'))
             
+        elif args.get('analyze'):
+            return await _handle_analyze(container, competitors_to_process, args.get('analysis_type'))
+            
         elif args.get('enrich'):
             return await _handle_enrich_existing(container, competitors_to_process, live_model, batch_model, batch_threshold, args.get('wait', False))
             
@@ -64,7 +68,7 @@ async def run_pipeline(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             return await _handle_get_posts(container, competitors_to_process, args.get('days'), args.get('all', False), live_model, batch_model, batch_threshold, args.get('wait', False))
         
         else:
-            raise ConfigurationError("No valid command specified", {"available_commands": ["check_job", "export", "enrich", "enrich_raw", "scrape", "get_posts"]})
+            raise ConfigurationError("No valid command specified", {"available_commands": ["check_job", "export", "analyze", "enrich", "enrich_raw", "scrape", "get_posts"]})
     
     except ETLError as e:
         logger.error(f"ETL Error: {e.message}")
@@ -105,6 +109,53 @@ async def _handle_export(container: DIContainer, competitors: list, export_forma
         
     except Exception as e:
         raise ExportError(f"Export failed: {str(e)}", format_type=export_format, competitors=competitors)
+
+
+async def _handle_analyze(container: DIContainer, competitors: list, analysis_type: str) -> Optional[Dict[str, Any]]:
+    """Handle content analysis operations with direct output display."""
+    try:
+        # Check jobs first to ensure latest data
+        for competitor in competitors:
+            await container.batch_manager.check_and_load_results(competitor, container.app_config)
+        
+        # Load all processed data for analysis
+        all_posts_to_analyze = []
+        for competitor in competitors:
+            processed_posts = container.state_manager.load_processed_data(competitor['name'])
+            
+            if not processed_posts:
+                logger.warning(f"No processed data found for '{competitor['name']}'. Please run enrichment first.")
+                continue
+
+            for post in processed_posts:
+                post['competitor'] = competitor['name']
+                all_posts_to_analyze.append(post)
+
+        if not all_posts_to_analyze:
+            logger.warning("‼️ No data found for analysis. Please ensure you have processed data.")
+            return {"success": False, "message": "No processed data available for analysis"}
+            
+        # Import the analysis functions from exporters
+        from .load.exporters import _format_as_content_gaps, _format_as_strategy_brief
+        
+        # Generate analysis based on type
+        if analysis_type == 'content_gaps':
+            analysis_output = _format_as_content_gaps(all_posts_to_analyze)
+            operation_name = "Content Gap Analysis"
+        else:  # strategy_brief
+            analysis_output = _format_as_strategy_brief(all_posts_to_analyze)
+            operation_name = "Strategic Intelligence Brief"
+        
+        # Display the analysis directly to the user
+        print("\n" + "="*80)
+        print(analysis_output)
+        print("="*80 + "\n")
+        
+        logger.info(f"{operation_name} completed for {len(competitors)} competitor(s)")
+        return {"success": True, "operation": "analyze", "analysis_type": analysis_type, "competitors_count": len(competitors)}
+        
+    except Exception as e:
+        raise EnrichmentError(f"Analysis failed: {str(e)}", details={"analysis_type": analysis_type, "competitors": [c['name'] for c in competitors]})
 
 
 async def _handle_enrich_existing(container: DIContainer, competitors: list, live_model: str, batch_model: str, batch_threshold: int, wait: bool) -> Optional[Dict[str, Any]]:

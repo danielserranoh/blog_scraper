@@ -72,6 +72,13 @@ The script uses the `click` library for a streamlined command-line interface. Al
     python main.py export --format content-gaps      # Content gap analysis
     ```
 
+* **Analyze Data:** ✨ *NEW*
+    ```bash
+    python main.py analyze --gaps             # Interactive content gap analysis
+    python main.py analyze --strategy         # Interactive strategic intelligence
+    python main.py analyze --gaps --competitor "terminalfour"  # Competitor-focused analysis
+    ```
+
 ### Command Options
 
 * `--competitor`, `-c`: Specify a single competitor to process
@@ -79,6 +86,12 @@ The script uses the `click` library for a streamlined command-line interface. Al
 * `--days`, `-d`: Specify number of days to scrape (default: 30)
 * `--wait`: Wait for batch jobs to complete before exiting
 * `--raw`: For enrich command, process raw data instead of processed data
+* `--gaps`: For analyze command, perform content gap analysis
+* `--strategy`: For analyze command, generate strategic intelligence brief
+
+## 📖 User Guide
+
+For detailed CLI usage examples, workflows, and best practices, see **[USER_GUIDE.md](USER_GUIDE.md)**.
 
 ## Architecture Overview
 
